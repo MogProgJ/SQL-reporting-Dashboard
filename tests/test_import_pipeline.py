@@ -302,14 +302,14 @@ class TestCSVReader:
         assert "categories" in frames
         assert len(frames["customers"]) == 1
 
-    def test_ignores_unknown_filenames(self):
-        from readers import read_csv_bundle
+    def test_no_recognised_files_raises_reader_error(self):
+        from readers import ReaderError, read_csv_bundle
 
         files = {
             "readme.csv": self._csv_buf("a,b\n1,2"),
         }
-        frames = read_csv_bundle(files)
-        assert frames == {}
+        with pytest.raises(ReaderError, match="No recognised CSV files"):
+            read_csv_bundle(files)
 
     def test_case_insensitive_stem(self):
         from readers import read_csv_bundle
@@ -331,7 +331,7 @@ class TestExcelReader:
         return buf
 
     def test_reads_matching_sheets(self):
-        from readers import read_excel_workbook
+        from readers import ReaderError, read_excel_workbook
 
         buf = self._make_workbook(
             {
@@ -341,20 +341,53 @@ class TestExcelReader:
                 "SomeOther": pd.DataFrame({"x": [1]}),
             }
         )
-        frames = read_excel_workbook(buf)
-        assert "customers" in frames
-        assert "someother" not in frames
+        # Only one canonical sheet present → missing sheets error
+        with pytest.raises(ReaderError, match="missing required sheets"):
+            read_excel_workbook(buf)
 
     def test_case_insensitive_sheet_names(self):
-        from readers import read_excel_workbook
+        from readers import ReaderError, read_excel_workbook
 
         buf = self._make_workbook(
             {
                 "CATEGORIES": pd.DataFrame({"name": ["Widgets"]}),
             }
         )
+        # Only one canonical sheet present → missing sheets error
+        with pytest.raises(ReaderError, match="missing required sheets"):
+            read_excel_workbook(buf)
+
+    def test_all_sheets_present_reads_successfully(self):
+        from readers import read_excel_workbook
+
+        buf = self._make_workbook(
+            {
+                "customers": pd.DataFrame(
+                    {"name": ["Alice"], "segment": ["SMB"], "city": ["PDX"]}
+                ),
+                "categories": pd.DataFrame({"name": ["Widgets"]}),
+                "products": pd.DataFrame(
+                    {"name": ["Gizmo"], "category": ["Widgets"], "unit_price_cents": [1500]}
+                ),
+                "orders": pd.DataFrame(
+                    {"order_id": ["1001"], "customer": ["Alice"], "status": ["completed"], "created_at": ["2026-01-15"]}
+                ),
+                "order_items": pd.DataFrame(
+                    {"order_id": ["1001"], "product": ["Gizmo"], "quantity": [3], "unit_price_cents": [1500]}
+                ),
+            }
+        )
         frames = read_excel_workbook(buf)
-        assert "categories" in frames
+        assert set(frames.keys()) == {"customers", "categories", "products", "orders", "order_items"}
+
+    def test_incompatible_workbook_no_matching_sheets(self):
+        from readers import ReaderError, read_excel_workbook
+
+        buf = self._make_workbook(
+            {"Sheet1": pd.DataFrame({"x": [1, 2]})}
+        )
+        with pytest.raises(ReaderError, match="not compatible"):
+            read_excel_workbook(buf)
 
 
 # ── Importer orchestration (mocked DB) ──────────────────────────
@@ -441,3 +474,147 @@ class TestImporter:
         profile = get_demo_profile()
         assert profile.source_type == SourceType.DEMO_SEED
         assert "seed" in profile.label.lower()
+
+
+# ── Import UX hardening ─────────────────────────────────────────
+
+
+class TestReaderErrorHandling:
+    """Tests for graceful error handling in the import pipeline."""
+
+    def test_openpyxl_missing_produces_reader_error(self):
+        """Simulate openpyxl not being installed."""
+        from readers import ReaderError, _check_openpyxl
+
+        with patch.dict("sys.modules", {"openpyxl": None}):
+            with pytest.raises(ReaderError, match="openpyxl"):
+                _check_openpyxl()
+
+    def test_excel_import_missing_openpyxl_returns_structured_result(self):
+        """Importer should return a clean ImportResult, not a traceback."""
+        from importer import import_excel_workbook
+        from readers import ReaderError
+
+        buf = BytesIO(b"not a real workbook")
+        with patch("readers._check_openpyxl", side_effect=ReaderError(
+            summary="Excel import requires the openpyxl package.",
+            detail="Install it with:  pip install openpyxl",
+        )):
+            result = import_excel_workbook(buf, label="test.xlsx")
+
+        assert result.success is False
+        assert any("openpyxl" in e.message for e in result.errors)
+
+    def test_incompatible_workbook_returns_structured_result(self):
+        """A workbook with no matching sheets should produce a clear result."""
+        from importer import import_excel_workbook
+
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            pd.DataFrame({"x": [1]}).to_excel(writer, sheet_name="Sheet1", index=False)
+        buf.seek(0)
+
+        result = import_excel_workbook(buf, label="bad.xlsx")
+        assert result.success is False
+        assert any("not compatible" in e.message for e in result.errors)
+
+    def test_workbook_missing_some_sheets_returns_structured_result(self):
+        """A workbook with only some canonical sheets should list what's missing."""
+        from importer import import_excel_workbook
+
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            pd.DataFrame({"name": ["Alice"], "segment": ["SMB"], "city": ["PDX"]}).to_excel(
+                writer, sheet_name="customers", index=False
+            )
+        buf.seek(0)
+
+        result = import_excel_workbook(buf, label="partial.xlsx")
+        assert result.success is False
+        assert any("missing" in e.message.lower() for e in result.errors)
+
+    def test_csv_no_matching_files_returns_structured_result(self):
+        """CSV bundle with only unrecognised file names should fail cleanly."""
+        from importer import import_csv_bundle
+
+        files = {"report.csv": BytesIO(b"a,b\n1,2")}
+        result = import_csv_bundle(files, label="bad bundle")
+        assert result.success is False
+        assert any("No recognised CSV" in e.message for e in result.errors)
+
+    def test_unexpected_reader_exception_returns_structured_result(self):
+        """Truly unexpected errors should still produce a result, not a traceback."""
+        from importer import import_excel_workbook
+
+        with patch(
+            "importer.read_excel_workbook",
+            side_effect=RuntimeError("disk on fire"),
+        ):
+            result = import_excel_workbook(BytesIO(b""), label="boom.xlsx")
+
+        assert result.success is False
+        assert any("Unexpected error" in e.message for e in result.errors)
+
+
+class TestTemplateGeneration:
+    """Tests that generated templates are valid and match the contract."""
+
+    def test_csv_zip_contains_all_entities(self):
+        import zipfile
+
+        from importer import generate_example_csv_zip
+
+        data = generate_example_csv_zip()
+        with zipfile.ZipFile(BytesIO(data)) as zf:
+            names = {n.replace(".csv", "") for n in zf.namelist()}
+        assert names == {"customers", "categories", "products", "orders", "order_items"}
+
+    def test_csv_zip_files_are_valid_csv(self):
+        import zipfile
+
+        from importer import generate_example_csv_zip
+
+        data = generate_example_csv_zip()
+        with zipfile.ZipFile(BytesIO(data)) as zf:
+            for name in zf.namelist():
+                df = pd.read_csv(BytesIO(zf.read(name)))
+                assert len(df) > 0, f"{name} should have sample rows"
+
+    def test_csv_template_passes_validation(self):
+        """Generated CSV template must pass the app's own validator."""
+        import zipfile
+
+        from importer import generate_example_csv_zip
+        from validators import validate_dataframes
+
+        data = generate_example_csv_zip()
+        frames: dict[str, pd.DataFrame] = {}
+        with zipfile.ZipFile(BytesIO(data)) as zf:
+            for name in zf.namelist():
+                entity = name.replace(".csv", "")
+                frames[entity] = pd.read_csv(BytesIO(zf.read(name)))
+
+        issues = validate_dataframes(frames)
+        errors = [i for i in issues if i.severity == "error"]
+        assert errors == [], f"Template should not have validation errors: {errors}"
+
+    def test_excel_template_contains_all_sheets(self):
+        from importer import generate_example_excel
+
+        data = generate_example_excel()
+        xls = pd.ExcelFile(BytesIO(data), engine="openpyxl")
+        sheets = {s.lower() for s in xls.sheet_names}
+        assert sheets == {"customers", "categories", "products", "orders", "order_items"}
+
+    def test_excel_template_passes_validation(self):
+        """Generated Excel template must pass the app's own validator."""
+        from importer import generate_example_excel
+        from validators import validate_dataframes
+
+        data = generate_example_excel()
+        xls = pd.ExcelFile(BytesIO(data), engine="openpyxl")
+        frames = {s.lower(): xls.parse(s) for s in xls.sheet_names}
+
+        issues = validate_dataframes(frames)
+        errors = [i for i in issues if i.severity == "error"]
+        assert errors == [], f"Template should not have validation errors: {errors}"

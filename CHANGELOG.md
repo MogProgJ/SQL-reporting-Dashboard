@@ -14,8 +14,19 @@
 - CSV bundle uploader (multi-file) with import button and result display
 - Excel workbook uploader (.xlsx) with import button and result display
 - Table row counts expander in sidebar
-- 35 unit tests for the import pipeline (`tests/test_import_pipeline.py`)
 - `openpyxl` added to requirements.txt
+
+### Added (Phase 3B Closeout — Import UX Hardening)
+- `ReaderError` exception class in `readers.py` for structured user-facing failures
+- Early workbook-shape validation: incompatible/missing sheets detected before deeper import
+- Graceful openpyxl dependency detection with clear install instructions
+- CSV bundle validation: no recognised files produces a clear error with expected names
+- `_show_import_result()` helper in `app.py` for consistent success/error/warning display
+- Downloadable example templates: CSV bundle (.zip) and Excel workbook (.xlsx)
+- Template generator functions in `importer.py` (`generate_example_csv_zip`, `generate_example_excel`)
+- Import contract helper text in sidebar (shows required files/sheets before upload)
+- `docs/importing-data.md` — full import guide with column specs, validation rules, limitations
+- Import UX hardening tests (`tests/test_import_pipeline.py`) — openpyxl detection, workbook shape, CSV errors
 
 ### Added (Phase 3A — Dashboard Productization)
 - `formatters.py` module with `cents_to_dollars`, `fmt_number`, `fmt_pct`, `add_rank`

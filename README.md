@@ -17,7 +17,8 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 
 ## What it shows
 - **Data source switching** — demo seed, CSV bundle upload, or Excel workbook upload
-- **Import validation** — schema checks, type checks, referential integrity, error/warning display
+- **Import validation** — schema checks, type checks, referential integrity, user-friendly error messages
+- **Downloadable templates** — example CSV bundle and Excel workbook for the supported format
 - **KPI cards** — total revenue, total orders, average order value, unique customers
 - **Filters** — date range, customer, category, product, order status (sidebar with clear-all)
 - **Top-N control** — adjustable slider for top lists
@@ -34,6 +35,11 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 ## Schema
 Five tables: `customers`, `categories`, `products`, `orders`, `order_items`.
 See [docs/schema.md](docs/schema.md) for the full column reference.
+
+## Importing data
+The dashboard accepts CSV bundles or Excel workbooks matching the canonical
+reporting model. See [docs/importing-data.md](docs/importing-data.md) for the
+full format specification, required columns, and common errors.
 
 ## Quickstart (local)
 
@@ -90,6 +96,7 @@ docs/
   vision.md         Product vision
   roadmap.md        Phased roadmap
   schema.md         Table definitions + import pipeline
+  importing-data.md Import guide + column specs + limitations
   architecture.md   Layer diagram
   decisions.md      ADRs
 ```
@@ -120,6 +127,7 @@ Integration tests require a running seeded Postgres instance.
 - [x] Extracted formatters module
 - [x] Canonical data model + import pipeline (CSV, Excel)
 - [x] Data source switching UI with validation feedback
+- [x] Import UX hardening (friendly errors, templates, dependency handling)
 - [ ] Role-based views or saved filter presets
 - [ ] Scheduled PDF/email reports
 

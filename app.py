@@ -39,11 +39,14 @@ import plotly.express as px
 from db import DATABASE_URL
 from formatters import add_rank, cents_to_dollars, fmt_number
 from importer import (
+    generate_example_csv_zip,
+    generate_example_excel,
     get_current_row_counts,
     get_demo_profile,
     import_csv_bundle,
     import_excel_workbook,
 )
+from readers import EXPECTED_NAMES_SORTED
 from queries import (
     find_outlier_days,
     find_outlier_orders,
@@ -86,6 +89,43 @@ def _empty_state(message: str = "No data matches the current filters.") -> None:
     )
 
 
+def _show_import_result(result) -> None:
+    """Display an import result cleanly in the sidebar."""
+    if result.success:
+        total = sum(result.row_counts.values())
+        summary_lines = "  \n".join(
+            f"  \u2022 {name}: {cnt:,} rows"
+            for name, cnt in result.row_counts.items()
+            if cnt
+        )
+        st.success(
+            f"**Imported {total:,} rows successfully.**  \n{summary_lines}"
+        )
+        if result.warnings:
+            with st.expander(f"\u26a0\ufe0f {len(result.warnings)} warning(s)"):
+                for w in result.warnings:
+                    st.caption(f"{w.entity}.{w.column}: {w.message}")
+        st.rerun()
+    else:
+        st.error(
+            f"**Import failed** ({len(result.errors)} error(s)).  \n"
+            "Review the issues below and fix your data."
+        )
+        for iss in result.errors:
+            label = iss.entity or "general"
+            # Show multi-line messages with preformatted detail
+            if "\n" in iss.message:
+                lines = iss.message.split("\n", 1)
+                st.warning(f"**{label}:** {lines[0]}")
+                st.caption(lines[1])
+            else:
+                st.warning(f"**{label}:** {iss.message}")
+        if result.warnings:
+            with st.expander(f"{len(result.warnings)} warning(s)"):
+                for w in result.warnings:
+                    st.caption(f"{w.entity}.{w.column}: {w.message}")
+
+
 # ── Sidebar ─────────────────────────────────────────────────────
 
 try:
@@ -122,9 +162,16 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    _ENTITY_LIST = ", ".join(f"`{n}`" for n in EXPECTED_NAMES_SORTED)
+
     if source_choice == "Upload CSV bundle":
+        st.markdown(
+            f"**Required CSV files:** {_ENTITY_LIST}  \n"
+            "One file per entity, column headers in the first row.",
+            help="File names must match the entity names (e.g. customers.csv).",
+        )
         csv_files = st.file_uploader(
-            "Upload CSV files (customers, categories, products, orders, order_items)",
+            "Upload CSV files",
             type=["csv"],
             accept_multiple_files=True,
             key="csv_upload",
@@ -133,44 +180,23 @@ with st.sidebar:
             file_map = {f.name: f for f in csv_files}
             with st.spinner("Importing CSV bundle\u2026"):
                 result = import_csv_bundle(file_map, label="CSV upload")
-            if result.success:
-                st.success(
-                    f"Imported {sum(result.row_counts.values()):,} rows. "
-                    "Refresh to see updated data."
-                )
-                st.rerun()
-            else:
-                st.error("Import failed. Fix the errors below and retry.")
-                for iss in result.errors:
-                    st.warning(f"**{iss.entity or 'general'}**: {iss.message}")
-            if result.warnings:
-                with st.expander(f"{len(result.warnings)} warning(s)"):
-                    for w in result.warnings:
-                        st.caption(f"{w.entity}.{w.column}: {w.message}")
+            _show_import_result(result)
 
     elif source_choice == "Upload Excel workbook":
+        st.markdown(
+            f"**Required sheets:** {_ENTITY_LIST}  \n"
+            "One sheet per entity, column headers in the first row.",
+            help="Sheet names are matched case-insensitively.",
+        )
         xls_file = st.file_uploader(
-            "Upload .xlsx with sheets: customers, categories, products, orders, order_items",
+            "Upload .xlsx workbook",
             type=["xlsx"],
             key="xls_upload",
         )
         if xls_file and st.button("Import Excel", use_container_width=True):
             with st.spinner("Importing Excel workbook\u2026"):
                 result = import_excel_workbook(xls_file, label=xls_file.name)
-            if result.success:
-                st.success(
-                    f"Imported {sum(result.row_counts.values()):,} rows. "
-                    "Refresh to see updated data."
-                )
-                st.rerun()
-            else:
-                st.error("Import failed. Fix the errors below and retry.")
-                for iss in result.errors:
-                    st.warning(f"**{iss.entity or 'general'}**: {iss.message}")
-            if result.warnings:
-                with st.expander(f"{len(result.warnings)} warning(s)"):
-                    for w in result.warnings:
-                        st.caption(f"{w.entity}.{w.column}: {w.message}")
+            _show_import_result(result)
 
     else:
         st.info("Using built-in demo dataset (seed.sql).")
@@ -178,6 +204,32 @@ with st.sidebar:
     with st.expander("Table row counts"):
         for tbl, cnt in row_counts.items():
             st.text(f"{tbl:15s} {cnt:>6,}")
+
+    # ── Template / example downloads ────────────────────────
+    with st.expander("\u2b07 Download example templates"):
+        st.caption(
+            "These contain sample data that the import pipeline accepts. "
+            "Replace the rows with your own data, keeping the structure."
+        )
+        st.download_button(
+            label="CSV bundle (.zip)",
+            data=generate_example_csv_zip(),
+            file_name="reporting_template_csv.zip",
+            mime="application/zip",
+        )
+        try:
+            xls_bytes = generate_example_excel()
+            st.download_button(
+                label="Excel workbook (.xlsx)",
+                data=xls_bytes,
+                file_name="reporting_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except Exception:
+            st.caption(
+                "Excel template unavailable (openpyxl not installed). "
+                "Use the CSV template instead."
+            )
 
     st.divider()
     st.header("Filters")

@@ -53,11 +53,19 @@ promises.
 - Active-filter summary in bordered container
 - `plotly` added as dependency
 
-## Phase 3B — Scenario Loading & Data Flexibility (planned)
+## Phase 3B — Data Flexibility + Import UX Hardening ✅
 
-- Pluggable seed datasets (e.g. swap orders/products for tickets/agents)
-- Data import from CSV or external DB
-- Schema migration support if tables evolve
+- Canonical reporting model (`canonical_model.py`) — import contract
+- CSV bundle and Excel workbook import pipeline
+- Data Source sidebar with UI feedback
+- Graceful error handling: missing openpyxl, incompatible workbooks, bad data
+- Early workbook-shape validation before deep import
+- Downloadable example templates (CSV zip + Excel workbook)
+- Import documentation (`docs/importing-data.md`)
+- Current limitation: only the canonical five-entity model is supported;
+  arbitrary flat spreadsheets are not yet accepted
+
+## Phase 3C — Scenario Loading & Broader Data Flexibility (planned)
 
 ## Phase 4 — Multi-Page Expansion (planned)
 
