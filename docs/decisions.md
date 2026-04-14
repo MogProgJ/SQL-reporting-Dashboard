@@ -27,3 +27,31 @@ files or inline strings; Streamlit renders the results.
 - Very fast to iterate on new reports.
 - No REST API or SPA framework needed for the MVP.
 - Streamlit's caching (`@st.cache_data`) keeps page loads snappy.
+
+## ADR 003: Normalised reporting schema (customers, categories, products, orders, order_items)
+
+**Context:** The original single `orders` table was too flat for meaningful
+reporting — no product breakdown, no category mix, no real customer dimension.
+
+**Decision:** Replace the single table with five normalised tables:
+`customers`, `categories`, `products`, `orders`, `order_items`.
+Money stays in cents. The seed script is idempotent (DROP + CREATE).
+
+**Consequences:**
+- Enables top-product, category-mix, customer-revenue, and trend reporting.
+- Seed script is re-runnable for local dev.
+- Schema is still simple — no migration tool needed yet.
+
+## ADR 004: Query layer separated from UI
+
+**Context:** Inline SQL in `app.py` would become hard to maintain as the
+dashboard grows.
+
+**Decision:** Extract a thin query layer (`db.py` + `queries.py`). `db.py`
+handles connections; `queries.py` contains parameterized functions that return
+DataFrames. No ORM.
+
+**Consequences:**
+- SQL is testable independently of Streamlit.
+- Filters use parameterized queries (safe from injection).
+- Easy to add new queries without touching UI code.

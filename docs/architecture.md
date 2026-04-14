@@ -9,9 +9,39 @@ This project is intentionally small, but structured like production code.
 - A database schema that matches real workflows
 
 ## Layers
-- API layer: controllers or UI
-- Service layer: business rules
-- Data layer: repositories and SQL
-- Docs: schema and usage examples
 
-As the project grows, this file will track decisions and tradeoffs.
+```
+┌───────────────────────────────┐
+│  app.py  (Streamlit UI)       │  Filters, KPIs, charts, tables, CSV export
+├───────────────────────────────┤
+│  queries.py                   │  Parameterized query functions (returns DataFrames)
+├───────────────────────────────┤
+│  db.py                        │  Connection helper (psycopg2 + DATABASE_URL)
+├───────────────────────────────┤
+│  PostgreSQL (Docker)          │  customers, categories, products, orders, order_items
+└───────────────────────────────┘
+```
+
+- **app.py** — Streamlit page: sidebar filters, KPI row, trend charts, top-lists, detail table, CSV export.
+- **queries.py** — All SQL lives here. Functions accept filter kwargs and return DataFrames. Parameterized queries prevent injection.
+- **db.py** — Thin connection wrapper around `psycopg2`. Reads `DATABASE_URL` from `.env`.
+- **sql/kpis.sql** — Reference copy of key queries for manual testing / documentation.
+- **seed/seed.sql** — Idempotent script that creates the schema and inserts demo data.
+
+## File layout
+
+```
+app.py              ← Streamlit dashboard (entry point)
+db.py               ← Database connection helper
+queries.py          ← Query functions
+requirements.txt
+docker-compose.yml
+.env.example
+seed/seed.sql       ← Schema + demo data
+sql/kpis.sql        ← Reference queries
+tests/              ← Lightweight test coverage
+docs/
+  schema.md
+  architecture.md
+  decisions.md
+```

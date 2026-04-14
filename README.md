@@ -2,79 +2,98 @@
 
 > **Status:** Public build started on 2026-03-01. This repo is being developed in public from MVP onward.
 
-This project is a small reporting dashboard built on top of a relational database. The point is to turn raw tables into decision-friendly metrics: KPIs, trends, filters, and exports. It’s meant to be fast to run locally and easy to extend with new queries.
+A small reporting dashboard built on a relational database. Turns raw tables into decision-friendly metrics: KPIs, trends, filters, and exports. Fast to run locally, easy to extend with new queries.
 
-The UI will be intentionally simple. The value is in the data model and the SQL.
+The UI is intentionally simple. The value is in the data model and the SQL.
 
 ## Tech stack
-PostgreSQL (Docker)
-Python
-Streamlit (dashboard UI)
+- PostgreSQL 16 (Docker)
+- Python 3.10+
+- Streamlit (dashboard UI)
+- psycopg2 (database driver)
+- pandas (data handling)
 
-## What it will show (MVP)
-A handful of business-style KPIs and drilldowns, such as:
-Revenue or volume over time
-Top customers or products
-Breakdowns by category
-A filtered table view
-CSV export for reports
+## What it shows (MVP)
+- **KPI row** — total revenue, total orders, average order value, unique customers
+- **Filters** — date range, customer, category, product (sidebar)
+- **Trend charts** — revenue over time, order volume over time
+- **Top lists** — top customers by revenue, top products by revenue
+- **Category breakdown** — bar chart + table
+- **Detail table** — filterable order-item-level view
+- **CSV export** — download filtered data
 
-The underlying dataset can be either:
-A classic “orders/products/customers” dataset
-Or data reused from my TicketFlow/MiniERP projects later on
+## Schema
+Five tables: `customers`, `categories`, `products`, `orders`, `order_items`.
+See [docs/schema.md](docs/schema.md) for the full column reference.
 
 ## Quickstart (local)
-Prerequisites:
-Docker and Python 3.10+.
 
-1) Start the database
+**Prerequisites:** Docker and Python 3.10+.
+
+```bash
+# 1. Start the database
 docker compose up -d
 
-2) Create a virtual environment and install deps
+# 2. Create a virtual environment and install deps
 python -m venv .venv
-source .venv/bin/activate
+# Windows:  .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
-3) Seed the database (example)
+# 3. Seed the database
 psql postgresql://postgres:postgres@localhost:5434/reporting -f seed/seed.sql
 
-4) Run the dashboard
+# 4. Run the dashboard
 streamlit run app.py
+```
 
 ## Configuration
-The app will read a DATABASE_URL.
 
-Example:
+The app reads `DATABASE_URL` from a `.env` file or environment variable.
+
+```
 DATABASE_URL=postgresql://postgres:postgres@localhost:5434/reporting
+```
 
-You can set it in your shell or use a .env file depending on your setup.
+Copy `.env.example` to `.env` to get started.
 
-## Repo layout (planned)
-app.py
+## Repo layout
+
+```
+app.py              Streamlit dashboard (entry point)
+db.py               Database connection helper
+queries.py          Parameterized query functions
 requirements.txt
-sql/
-kpis.sql
-reports.sql
-seed/
-seed.sql
 docker-compose.yml
+.env.example
+seed/seed.sql       Schema + demo data (idempotent)
+sql/kpis.sql        Reference queries
+tests/              Test suite
+docs/
+  schema.md         Table definitions
+  architecture.md   Layer diagram
+  decisions.md      ADRs
+```
 
-## KPIs and reports (planned)
-Examples of queries this project will include:
-Revenue or ticket volume in the last 7/30/90 days
-Top 10 products/customers
-Average order value
-Resolution time distribution (if using ticket data)
-Week-over-week changes and spikes
+## Running tests
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+Integration tests require a running seeded Postgres instance.
 
 ## Roadmap
-- [ ] Finalize dataset and schema
-- [ ] Seed script with realistic sample data
-- [ ] MVP dashboard pages and filters
-- [ ] Add caching for faster queries
-- [ ] Safe parameterized queries
-- [ ] CSV export
-- [ ] “Anomalies” page for unusual spikes/drops (optional)
+- [x] Normalised schema (customers, categories, products, orders, order_items)
+- [x] Realistic seed data (~150 orders, ~500 line items)
+- [x] Query layer separated from UI
+- [x] KPI row, trend charts, top lists, category breakdown
+- [x] Sidebar filters (date, customer, category, product)
+- [x] Detail table + CSV export
+- [ ] Caching with `@st.cache_data` for heavier queries
+- [ ] Anomalies page for unusual spikes/drops (optional)
+- [ ] Additional chart types (pie, heatmap)
 
 ## License
 MIT
