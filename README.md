@@ -2,7 +2,7 @@
 
 > **Status:** Public build started on 2026-03-01. This repo is being developed in public from MVP onward.
 
-A small reporting dashboard built on a relational database. Turns raw tables into decision-friendly metrics: KPIs, trends, filters, and exports. Fast to run locally, easy to extend with new queries.
+A small reporting dashboard built on a relational database. Turns raw tables into decision-friendly metrics: KPIs, trends, filters, drilldowns, anomaly surfacing, and exports. Fast to run locally, easy to extend with new queries.
 
 The UI is intentionally simple. The value is in the data model and the SQL.
 
@@ -13,12 +13,16 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 - psycopg2 (database driver)
 - pandas (data handling)
 
-## What it shows (MVP)
+## What it shows
 - **KPI row** — total revenue, total orders, average order value, unique customers
-- **Filters** — date range, customer, category, product (sidebar)
+- **Filters** — date range, customer, category, product, order status (sidebar)
+- **Top-N control** — adjustable slider for top lists
 - **Trend charts** — revenue over time, order volume over time
 - **Top lists** — top customers by revenue, top products by revenue
-- **Category breakdown** — bar chart + table
+- **Category breakdown** — bar chart + table with % of total
+- **Product revenue share** — each product's contribution to total revenue
+- **Customer drilldown** — revenue, order count, AOV, segment, city per customer
+- **Anomaly / outlier surfacing** — unusually large orders and high-revenue days (IQR rule)
 - **Detail table** — filterable order-item-level view
 - **CSV export** — download filtered data
 
@@ -70,6 +74,8 @@ seed/seed.sql       Schema + demo data (idempotent)
 sql/kpis.sql        Reference queries
 tests/              Test suite
 docs/
+  vision.md         Product vision
+  roadmap.md        Phased roadmap
   schema.md         Table definitions
   architecture.md   Layer diagram
   decisions.md      ADRs
@@ -91,9 +97,16 @@ Integration tests require a running seeded Postgres instance.
 - [x] KPI row, trend charts, top lists, category breakdown
 - [x] Sidebar filters (date, customer, category, product)
 - [x] Detail table + CSV export
-- [ ] Caching with `@st.cache_data` for heavier queries
-- [ ] Anomalies page for unusual spikes/drops (optional)
+- [x] Order status filter across all queries
+- [x] Product revenue share and customer drilldown
+- [x] Anomaly/outlier surfacing (IQR-based)
+- [x] Adjustable top-N slider
+- [x] Active-filter summary and improved empty states
 - [ ] Additional chart types (pie, heatmap)
+- [ ] Role-based views or saved filter presets
+- [ ] Scheduled PDF/email reports
+
+See [docs/roadmap.md](docs/roadmap.md) for the full phased plan and [docs/vision.md](docs/vision.md) for product direction.
 
 ## License
 MIT

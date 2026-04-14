@@ -54,6 +54,16 @@ class TestBuildFilters:
         where, params = self._build(products=["Organic Bananas"])
         assert "p.name = ANY(%s)" in where
 
+    def test_statuses_filter(self):
+        where, params = self._build(statuses=["completed", "pending"])
+        assert "o.status = ANY(%s)" in where
+        assert ["completed", "pending"] in params
+
+    def test_statuses_single(self):
+        where, params = self._build(statuses=["cancelled"])
+        assert "o.status = ANY(%s)" in where
+        assert len(params) == 1
+
     def test_combined_filters(self):
         where, params = self._build(
             date_from=date(2026, 1, 1),
@@ -66,14 +76,25 @@ class TestBuildFilters:
         assert " AND " in where
         assert len(params) == 5
 
+    def test_all_filters_combined(self):
+        where, params = self._build(
+            date_from=date(2026, 1, 1),
+            date_to=date(2026, 6, 30),
+            customers=["Acme Foods"],
+            categories=["Dairy"],
+            products=["Whole Milk 1gal"],
+            statuses=["completed"],
+        )
+        assert where.startswith("WHERE")
+        assert "o.status = ANY(%s)" in where
+        assert len(params) == 6
+
 
 class TestDbModule:
     """Test db.py helper behaviour (mocked connections)."""
 
     def test_missing_database_url_raises(self):
         with patch.dict(os.environ, {}, clear=True):
-            # Re-import to pick up empty DATABASE_URL
-            import importlib
             import db as db_mod
             db_mod.DATABASE_URL = ""
             with pytest.raises(RuntimeError, match="DATABASE_URL"):
@@ -96,7 +117,6 @@ class TestCentsToDollars:
     """Test the formatting helper used by the dashboard."""
 
     def test_basic(self):
-        # Import from app would pull in Streamlit; test the logic directly
         def cents_to_dollars(c):
             return f"${c / 100:,.2f}"
 
@@ -104,6 +124,59 @@ class TestCentsToDollars:
         assert cents_to_dollars(100) == "$1.00"
         assert cents_to_dollars(129900) == "$1,299.00"
         assert cents_to_dollars(50) == "$0.50"
+
+
+class TestAnomalyHelpers:
+    """Test the IQR-based outlier detection functions."""
+
+    def test_find_outlier_orders_empty(self):
+        from queries import find_outlier_orders
+        df = pd.DataFrame(columns=["order_id", "order_total_cents"])
+        result = find_outlier_orders(df)
+        assert result.empty
+
+    def test_find_outlier_orders_no_outliers(self):
+        from queries import find_outlier_orders
+        df = pd.DataFrame({"order_total_cents": [100, 110, 105, 108, 102]})
+        result = find_outlier_orders(df)
+        assert result.empty
+
+    def test_find_outlier_orders_with_outlier(self):
+        from queries import find_outlier_orders
+        # Values clustered around 100, with one extreme value
+        df = pd.DataFrame({
+            "order_total_cents": [100, 102, 98, 101, 99, 103, 97, 100, 101, 500],
+        })
+        result = find_outlier_orders(df)
+        assert len(result) >= 1
+        assert result["order_total_cents"].min() > 200
+
+    def test_find_outlier_orders_all_same(self):
+        from queries import find_outlier_orders
+        df = pd.DataFrame({"order_total_cents": [100] * 10})
+        result = find_outlier_orders(df)
+        assert result.empty
+
+    def test_find_outlier_days_empty(self):
+        from queries import find_outlier_days
+        df = pd.DataFrame(columns=["order_date", "revenue_cents"])
+        result = find_outlier_days(df)
+        assert result.empty
+
+    def test_find_outlier_days_with_spike(self):
+        from queries import find_outlier_days
+        df = pd.DataFrame({
+            "revenue_cents": [1000, 1100, 950, 1050, 1000, 980, 1020, 1010, 990, 5000],
+        })
+        result = find_outlier_days(df)
+        assert len(result) >= 1
+        assert result["revenue_cents"].min() > 2000
+
+    def test_find_outlier_days_wrong_column(self):
+        from queries import find_outlier_days
+        df = pd.DataFrame({"other_col": [100, 200, 300]})
+        result = find_outlier_days(df, col="revenue_cents")
+        assert result.empty
 
 
 # ── Integration tests (require running DB) ───────────────────────
@@ -135,6 +208,12 @@ class TestIntegrationQueries:
         products = get_products()
         assert len(products) >= 20
 
+    def test_get_statuses(self):
+        from queries import get_statuses
+        statuses = get_statuses()
+        assert len(statuses) >= 1
+        assert "completed" in statuses
+
     def test_get_date_range(self):
         from queries import get_date_range
         mn, mx = get_date_range()
@@ -149,6 +228,12 @@ class TestIntegrationQueries:
         assert row["total_revenue_cents"] > 0
         assert row["avg_order_value_cents"] > 0
         assert row["unique_customers"] > 0
+
+    def test_get_kpis_status_filter(self):
+        from queries import get_kpis
+        df = get_kpis(statuses=["completed"])
+        assert not df.empty
+        assert df.iloc[0]["total_orders"] > 0
 
     def test_get_revenue_trend(self):
         from queries import get_revenue_trend
@@ -175,6 +260,19 @@ class TestIntegrationQueries:
         assert not df.empty
         assert "category" in df.columns
 
+    def test_get_product_share(self):
+        from queries import get_product_share
+        df = get_product_share(limit=5)
+        assert len(df) <= 5
+        assert "pct_of_total" in df.columns
+
+    def test_get_customer_drilldown(self):
+        from queries import get_customer_drilldown
+        df = get_customer_drilldown(limit=5)
+        assert len(df) <= 5
+        assert "avg_order_cents" in df.columns
+        assert "segment" in df.columns
+
     def test_get_order_detail(self):
         from queries import get_order_detail
         df = get_order_detail()
@@ -182,9 +280,21 @@ class TestIntegrationQueries:
         expected_cols = {"order_id", "order_date", "status", "customer", "product", "category", "quantity"}
         assert expected_cols.issubset(set(df.columns))
 
+    def test_get_order_totals(self):
+        from queries import get_order_totals
+        df = get_order_totals()
+        assert not df.empty
+        assert "order_total_cents" in df.columns
+
     def test_filtered_kpis(self):
         from queries import get_kpis, get_date_range
         mn, mx = get_date_range()
         df = get_kpis(date_from=mn, date_to=mx)
         assert not df.empty
         assert df.iloc[0]["total_orders"] > 0
+
+    def test_combined_status_and_date_filter(self):
+        from queries import get_kpis, get_date_range
+        mn, mx = get_date_range()
+        df = get_kpis(date_from=mn, date_to=mx, statuses=["completed"])
+        assert not df.empty

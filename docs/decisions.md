@@ -55,3 +55,19 @@ DataFrames. No ORM.
 - SQL is testable independently of Streamlit.
 - Filters use parameterized queries (safe from injection).
 - Easy to add new queries without touching UI code.
+
+## ADR 005: IQR-based anomaly surfacing (no ML)
+
+**Context:** The dashboard should help users spot unusual orders or revenue
+days, but adding ML/AI would be overkill and dishonest for this project's scope.
+
+**Decision:** Use the classic IQR (interquartile range) box-plot rule to flag
+outliers: any value above Q3 + 1.5 × IQR. The rule is applied in Python
+(`find_outlier_orders`, `find_outlier_days` in `queries.py`) and the dashboard
+explains the method transparently in the UI.
+
+**Consequences:**
+- Simple, deterministic, and explainable.
+- No external dependencies or model training.
+- Users see exactly what rule is being applied.
+- Can be replaced with more sophisticated methods later if needed.
