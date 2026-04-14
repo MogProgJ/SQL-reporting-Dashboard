@@ -1,7 +1,7 @@
 # Roadmap
 
 Phased plan for the SQL Reporting Dashboard. Each phase builds on the last.
-Only phases 0–2 are implemented. Later phases are honest intentions, not
+Only phases 0–3A are implemented. Later phases are honest intentions, not
 promises.
 
 ## Phase 0 — Setup & DB Foundation ✅
@@ -39,7 +39,21 @@ promises.
 - Expanded test coverage for new filters, queries, and anomaly helpers
 - ADR 005 for anomaly approach
 
-## Phase 3 — Scenario Loading & Data Flexibility (planned)
+## Phase 3A — Dashboard Productization ✅
+
+- Content tabs: Overview, Breakdown, Outliers, Detail & Export
+- Plotly charts: area, bar, horizontal bar, donut (replacing Streamlit defaults)
+- `st.column_config` formatting on all tables (currency, %, counts, ranks)
+- CSS-styled KPI metric cards and download button
+- Horizontal bar chart for categories (readable labels)
+- Donut chart for product revenue share
+- `order_total_cents` window function in detail query
+- `formatters.py` module extracted and tested
+- "Clear all filters" button, multiselect placeholders
+- Active-filter summary in bordered container
+- `plotly` added as dependency
+
+## Phase 3B — Scenario Loading & Data Flexibility (planned)
 
 - Pluggable seed datasets (e.g. swap orders/products for tickets/agents)
 - Data import from CSV or external DB

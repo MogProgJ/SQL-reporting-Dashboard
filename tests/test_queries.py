@@ -117,13 +117,49 @@ class TestCentsToDollars:
     """Test the formatting helper used by the dashboard."""
 
     def test_basic(self):
-        def cents_to_dollars(c):
-            return f"${c / 100:,.2f}"
+        from formatters import cents_to_dollars
 
         assert cents_to_dollars(0) == "$0.00"
         assert cents_to_dollars(100) == "$1.00"
         assert cents_to_dollars(129900) == "$1,299.00"
         assert cents_to_dollars(50) == "$0.50"
+
+
+class TestFormatters:
+    """Test additional formatting helpers in formatters.py."""
+
+    def test_fmt_number(self):
+        from formatters import fmt_number
+
+        assert fmt_number(0) == "0"
+        assert fmt_number(1234) == "1,234"
+        assert fmt_number(1000000) == "1,000,000"
+        assert fmt_number(42.9) == "42"
+
+    def test_fmt_pct(self):
+        from formatters import fmt_pct
+
+        assert fmt_pct(0.0) == "0.0%"
+        assert fmt_pct(12.345) == "12.3%"
+        assert fmt_pct(100.0) == "100.0%"
+
+    def test_add_rank(self):
+        from formatters import add_rank
+
+        df = pd.DataFrame({"name": ["a", "b", "c"], "val": [10, 20, 30]})
+        ranked = add_rank(df)
+        assert list(ranked.columns) == ["#", "name", "val"]
+        assert list(ranked["#"]) == [1, 2, 3]
+        # Original should be unmodified
+        assert "#" not in df.columns
+
+    def test_add_rank_custom_col(self):
+        from formatters import add_rank
+
+        df = pd.DataFrame({"x": [1]})
+        ranked = add_rank(df, col="Rank")
+        assert "Rank" in ranked.columns
+        assert ranked.iloc[0]["Rank"] == 1
 
 
 class TestAnomalyHelpers:
@@ -277,7 +313,10 @@ class TestIntegrationQueries:
         from queries import get_order_detail
         df = get_order_detail()
         assert not df.empty
-        expected_cols = {"order_id", "order_date", "status", "customer", "product", "category", "quantity"}
+        expected_cols = {
+            "order_id", "order_date", "status", "customer", "product",
+            "category", "quantity", "order_total_cents",
+        }
         assert expected_cols.issubset(set(df.columns))
 
     def test_get_order_totals(self):

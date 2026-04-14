@@ -71,3 +71,22 @@ explains the method transparently in the UI.
 - No external dependencies or model training.
 - Users see exactly what rule is being applied.
 - Can be replaced with more sophisticated methods later if needed.
+
+## ADR 006: Plotly charts + tab layout (Phase 3A)
+
+**Context:** The dashboard was functional but visually flat — default Streamlit
+charts, long single-page scroll, no visual hierarchy. The presentation layer
+was the weakest link for portfolio credibility.
+
+**Decision:** Migrate charts to Plotly Express (area, bar, horizontal bar,
+donut) and reorganise the page into four content tabs (Overview, Breakdown,
+Outliers, Detail & Export). Extract display helpers into `formatters.py`.
+Use `st.column_config` for table formatting.
+
+**Consequences:**
+- Charts are more readable with proper axis labels, hover tooltips, and
+  appropriate chart types (e.g. horizontal bar for categories).
+- Tab structure reduces cognitive load without hiding functionality.
+- `plotly` becomes a new dependency (~15 MB).
+- Formatting helpers are testable independently of Streamlit.
+- Single-page architecture preserved — no multi-page routing complexity.

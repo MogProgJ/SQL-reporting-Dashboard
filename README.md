@@ -10,21 +10,23 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 - PostgreSQL 16 (Docker)
 - Python 3.10+
 - Streamlit (dashboard UI)
+- Plotly (charts)
 - psycopg2 (database driver)
 - pandas (data handling)
 
 ## What it shows
-- **KPI row** — total revenue, total orders, average order value, unique customers
-- **Filters** — date range, customer, category, product, order status (sidebar)
+- **KPI cards** — total revenue, total orders, average order value, unique customers
+- **Filters** — date range, customer, category, product, order status (sidebar with clear-all)
 - **Top-N control** — adjustable slider for top lists
-- **Trend charts** — revenue over time, order volume over time
-- **Top lists** — top customers by revenue, top products by revenue
-- **Category breakdown** — bar chart + table with % of total
-- **Product revenue share** — each product's contribution to total revenue
+- **Tabs** — Overview, Breakdown, Outliers, Detail & Export
+- **Trend charts** — Plotly area chart (revenue) and bar chart (order volume)
+- **Top lists** — ranked customers and products by revenue
+- **Category breakdown** — horizontal bar chart + table with % share
+- **Product revenue share** — donut chart + ranked table
 - **Customer drilldown** — revenue, order count, AOV, segment, city per customer
 - **Anomaly / outlier surfacing** — unusually large orders and high-revenue days (IQR rule)
-- **Detail table** — filterable order-item-level view
-- **CSV export** — download filtered data
+- **Detail table** — formatted order-item view with order totals
+- **CSV export** — download raw filtered data
 
 ## Schema
 Five tables: `customers`, `categories`, `products`, `orders`, `order_items`.
@@ -65,6 +67,7 @@ Copy `.env.example` to `.env` to get started.
 
 ```
 app.py              Streamlit dashboard (entry point)
+formatters.py       Display helpers (currency, rank, %)
 db.py               Database connection helper
 queries.py          Parameterized query functions
 requirements.txt
@@ -100,9 +103,11 @@ Integration tests require a running seeded Postgres instance.
 - [x] Order status filter across all queries
 - [x] Product revenue share and customer drilldown
 - [x] Anomaly/outlier surfacing (IQR-based)
-- [x] Adjustable top-N slider
-- [x] Active-filter summary and improved empty states
-- [ ] Additional chart types (pie, heatmap)
+- [x] Adjustable top-N slider and active-filter summary
+- [x] Plotly charts (area, bar, horizontal bar, donut)
+- [x] Tab-based page structure (Overview, Breakdown, Outliers, Detail)
+- [x] Column-config table formatting with ranks
+- [x] Extracted formatters module
 - [ ] Role-based views or saved filter presets
 - [ ] Scheduled PDF/email reports
 

@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Added (Phase 3A — Dashboard Productization)
+- `formatters.py` module with `cents_to_dollars`, `fmt_number`, `fmt_pct`, `add_rank`
+- Top-level content tabs: Overview, Breakdown, Outliers, Detail & Export
+- Plotly charts: area (revenue trend), bar (order volume), horizontal bar (categories), donut (product share)
+- `st.column_config` formatting across all tables (currency, percentages, counts)
+- Rank column in top lists, product share, and customer drilldown tables
+- CSS-styled KPI metric cards
+- Active-filter summary in bordered container
+- "Clear all filters" sidebar button
+- Placeholder text on all multiselect filters
+- `order_total_cents` window function in detail query
+- Line item count / order count summary on detail tab
+- Chart captions explaining each visualization
+- CSV note clarifying raw-data export format
+- Formatter unit tests (`fmt_number`, `fmt_pct`, `add_rank`)
+- `plotly` added to requirements.txt
+
+### Changed
+- Page structure reorganized from flat sections into four content tabs
+- Charts migrated from Streamlit defaults to Plotly Express
+- Category breakdown now uses horizontal bar chart (readable labels)
+- Product share now includes donut chart alongside table
+- All tables use `column_config` with proper display names and formats
+- Detail table now shows order total per line for context
+- Empty states upgraded from `st.info` to `st.warning` with bolder guidance
+- Download button styled with accent border
+
 ### Added (Phase 2 — Decision Support Upgrade)
 - Product vision (`docs/vision.md`) and phased roadmap (`docs/roadmap.md`)
 - Order status filter in sidebar, integrated across all queries

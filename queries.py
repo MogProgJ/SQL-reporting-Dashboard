@@ -263,7 +263,8 @@ def get_order_detail(**filters) -> pd.DataFrame:
       cat.name                              AS category,
       oi.quantity,
       oi.unit_price_cents,
-      oi.quantity * oi.unit_price_cents      AS line_total_cents
+      oi.quantity * oi.unit_price_cents      AS line_total_cents,
+      SUM(oi.quantity * oi.unit_price_cents) OVER (PARTITION BY o.id) AS order_total_cents
     {_BASE_JOIN}
     {where}
     ORDER BY o.created_at DESC, o.id, oi.id;
