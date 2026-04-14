@@ -13,8 +13,11 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 - Plotly (charts)
 - psycopg2 (database driver)
 - pandas (data handling)
+- openpyxl (Excel import)
 
 ## What it shows
+- **Data source switching** — demo seed, CSV bundle upload, or Excel workbook upload
+- **Import validation** — schema checks, type checks, referential integrity, error/warning display
 - **KPI cards** — total revenue, total orders, average order value, unique customers
 - **Filters** — date range, customer, category, product, order status (sidebar with clear-all)
 - **Top-N control** — adjustable slider for top lists
@@ -70,16 +73,23 @@ app.py              Streamlit dashboard (entry point)
 formatters.py       Display helpers (currency, rank, %)
 db.py               Database connection helper
 queries.py          Parameterized query functions
+canonical_model.py  Canonical entity/column specs
+dataset_profile.py  Import result + profile value types
+importer.py         Import orchestrator (CSV / Excel → DB)
+readers.py          CSV bundle + Excel workbook readers
+validators.py       Schema + referential validation
+normalizers.py      Type coercion (Int64, dates, text)
+loader.py           Atomic TRUNCATE + reload into Postgres
 requirements.txt
 docker-compose.yml
 .env.example
 seed/seed.sql       Schema + demo data (idempotent)
 sql/kpis.sql        Reference queries
-tests/              Test suite
+tests/              Test suite (unit + integration)
 docs/
   vision.md         Product vision
   roadmap.md        Phased roadmap
-  schema.md         Table definitions
+  schema.md         Table definitions + import pipeline
   architecture.md   Layer diagram
   decisions.md      ADRs
 ```
@@ -108,6 +118,8 @@ Integration tests require a running seeded Postgres instance.
 - [x] Tab-based page structure (Overview, Breakdown, Outliers, Detail)
 - [x] Column-config table formatting with ranks
 - [x] Extracted formatters module
+- [x] Canonical data model + import pipeline (CSV, Excel)
+- [x] Data source switching UI with validation feedback
 - [ ] Role-based views or saved filter presets
 - [ ] Scheduled PDF/email reports
 

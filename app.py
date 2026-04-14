@@ -1,4 +1,4 @@
-"""SQL Reporting Dashboard - Phase 3A: Productized Dashboard."""
+"""SQL Reporting Dashboard - Phase 3B: Data Flexibility."""
 
 import streamlit as st
 
@@ -38,6 +38,12 @@ import plotly.express as px
 
 from db import DATABASE_URL
 from formatters import add_rank, cents_to_dollars, fmt_number
+from importer import (
+    get_current_row_counts,
+    get_demo_profile,
+    import_csv_bundle,
+    import_excel_workbook,
+)
 from queries import (
     find_outlier_days,
     find_outlier_orders,
@@ -99,6 +105,81 @@ def _clear_filters():
 
 
 with st.sidebar:
+    # ── Data Source ──────────────────────────────────────────
+    st.header("Data Source")
+
+    row_counts = get_current_row_counts()
+    total_rows = sum(row_counts.values())
+    st.caption(
+        f"**Current dataset:** {total_rows:,} rows across "
+        f"{len([v for v in row_counts.values() if v]):,} tables"
+    )
+
+    source_choice = st.radio(
+        "Import data",
+        ["Demo (seed)", "Upload CSV bundle", "Upload Excel workbook"],
+        index=0,
+        label_visibility="collapsed",
+    )
+
+    if source_choice == "Upload CSV bundle":
+        csv_files = st.file_uploader(
+            "Upload CSV files (customers, categories, products, orders, order_items)",
+            type=["csv"],
+            accept_multiple_files=True,
+            key="csv_upload",
+        )
+        if csv_files and st.button("Import CSVs", use_container_width=True):
+            file_map = {f.name: f for f in csv_files}
+            with st.spinner("Importing CSV bundle\u2026"):
+                result = import_csv_bundle(file_map, label="CSV upload")
+            if result.success:
+                st.success(
+                    f"Imported {sum(result.row_counts.values()):,} rows. "
+                    "Refresh to see updated data."
+                )
+                st.rerun()
+            else:
+                st.error("Import failed. Fix the errors below and retry.")
+                for iss in result.errors:
+                    st.warning(f"**{iss.entity or 'general'}**: {iss.message}")
+            if result.warnings:
+                with st.expander(f"{len(result.warnings)} warning(s)"):
+                    for w in result.warnings:
+                        st.caption(f"{w.entity}.{w.column}: {w.message}")
+
+    elif source_choice == "Upload Excel workbook":
+        xls_file = st.file_uploader(
+            "Upload .xlsx with sheets: customers, categories, products, orders, order_items",
+            type=["xlsx"],
+            key="xls_upload",
+        )
+        if xls_file and st.button("Import Excel", use_container_width=True):
+            with st.spinner("Importing Excel workbook\u2026"):
+                result = import_excel_workbook(xls_file, label=xls_file.name)
+            if result.success:
+                st.success(
+                    f"Imported {sum(result.row_counts.values()):,} rows. "
+                    "Refresh to see updated data."
+                )
+                st.rerun()
+            else:
+                st.error("Import failed. Fix the errors below and retry.")
+                for iss in result.errors:
+                    st.warning(f"**{iss.entity or 'general'}**: {iss.message}")
+            if result.warnings:
+                with st.expander(f"{len(result.warnings)} warning(s)"):
+                    for w in result.warnings:
+                        st.caption(f"{w.entity}.{w.column}: {w.message}")
+
+    else:
+        st.info("Using built-in demo dataset (seed.sql).")
+
+    with st.expander("Table row counts"):
+        for tbl, cnt in row_counts.items():
+            st.text(f"{tbl:15s} {cnt:>6,}")
+
+    st.divider()
     st.header("Filters")
 
     date_from, date_to = st.date_input(

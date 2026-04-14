@@ -90,3 +90,27 @@ Use `st.column_config` for table formatting.
 - `plotly` becomes a new dependency (~15 MB).
 - Formatting helpers are testable independently of Streamlit.
 - Single-page architecture preserved — no multi-page routing complexity.
+
+## ADR 007: Import pipeline with canonical model (Phase 3B)
+
+**Context:** The dashboard was locked to a single data source (seed.sql).
+To demonstrate that the reporting model is reusable, users need a way to
+import their own data — but not from arbitrary flat files. The schema must
+stay fixed; only the rows change.
+
+**Decision:** Define a canonical reporting model (`canonical_model.py`) that
+specifies the five required entities, their columns, types, and referential
+relationships. Build an import pipeline (readers → validators → normalizers →
+loader) that accepts CSV bundles or Excel workbooks and atomically replaces
+the database contents via TRUNCATE + reload inside a single transaction.
+
+**Consequences:**
+- Any conforming dataset can be loaded without code changes.
+- Validation catches errors (missing entities, bad types, broken references)
+  before touching the database.
+- TRUNCATE + reload is simpler than merge/upsert and sufficient for the
+  dashboard's reporting-only use case.
+- `openpyxl` becomes a new dependency (~4 MB).
+- Dashboard queries remain completely unchanged — they still read the same
+  five tables with the same columns.
+- No auth or multi-tenancy: one dataset at a time, visible to all users.

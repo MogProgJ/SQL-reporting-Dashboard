@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added (Phase 3B — Data Flexibility)
+- Canonical reporting model (`canonical_model.py`) — 5 entity specs with column types and natural keys
+- Dataset profile types (`dataset_profile.py`) — `SourceType`, `ValidationIssue`, `ImportResult`, `DatasetProfile`
+- Validation layer (`validators.py`) — schema checks, type checks, null checks, positive-value constraints, cross-entity referential integrity
+- CSV bundle reader and Excel workbook reader (`readers.py`)
+- Type normalizer (`normalizers.py`) — column name cleanup, Int64/date/text coercion
+- Database loader (`loader.py`) — atomic TRUNCATE + reload with FK-ordered inserts
+- Import orchestrator (`importer.py`) — ties readers → validators → normalizers → loader
+- Data Source sidebar section with radio selector (Demo / CSV / Excel)
+- CSV bundle uploader (multi-file) with import button and result display
+- Excel workbook uploader (.xlsx) with import button and result display
+- Table row counts expander in sidebar
+- 35 unit tests for the import pipeline (`tests/test_import_pipeline.py`)
+- `openpyxl` added to requirements.txt
+
 ### Added (Phase 3A — Dashboard Productization)
 - `formatters.py` module with `cents_to_dollars`, `fmt_number`, `fmt_pct`, `add_rank`
 - Top-level content tabs: Overview, Breakdown, Outliers, Detail & Export
