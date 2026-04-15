@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added (Phase 3B — Local Bootstrap & Repo Hygiene)
+- `scripts/dev-up.ps1` — one-command local bootstrap: venv, deps, Docker, seed, Streamlit
+- CI workflow (`ci.yml`) now runs `python -m pytest tests/ -v` after compile check
+
+### Fixed (Phase 3B — Repo Hygiene)
+- `.env.example` cleaned: removed stale JWT/PORT/LOG fields, added comments
+- `.gitignore` cleaned: removed Java-template noise (*.class, *.jar, *.war)
+- `.github/.github/` nested directory flattened — `bug_report.md` moved to correct level
+- README quickstart: added Docker-based seeding alternative, bootstrap script docs
+- Architecture and roadmap docs updated with `scripts/` and `importing-data.md`
+
 ### Added (Phase 3B — Data Flexibility)
 - Canonical reporting model (`canonical_model.py`) — 5 entity specs with column types and natural keys
 - Dataset profile types (`dataset_profile.py`) — `SourceType`, `ValidationIssue`, `ImportResult`, `DatasetProfile`

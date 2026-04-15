@@ -53,7 +53,7 @@ promises.
 - Active-filter summary in bordered container
 - `plotly` added as dependency
 
-## Phase 3B — Data Flexibility + Import UX Hardening ✅
+## Phase 3B — Data Flexibility + Import UX + Local Bootstrap ✅
 
 - Canonical reporting model (`canonical_model.py`) — import contract
 - CSV bundle and Excel workbook import pipeline
@@ -62,6 +62,11 @@ promises.
 - Early workbook-shape validation before deep import
 - Downloadable example templates (CSV zip + Excel workbook)
 - Import documentation (`docs/importing-data.md`)
+- `scripts/dev-up.ps1` — one-command local bootstrap for VS Code / PowerShell
+- `.env.example` cleaned up (DATABASE_URL only, documented)
+- `.gitignore` cleaned (removed Java-template noise)
+- Nested `.github/.github` structure fixed
+- CI workflow now runs `pytest` alongside `compileall`
 - Current limitation: only the canonical five-entity model is supported;
   arbitrary flat spreadsheets are not yet accepted
 

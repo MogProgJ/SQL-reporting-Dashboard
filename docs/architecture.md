@@ -59,6 +59,8 @@ loader.py           ← Atomic TRUNCATE + reload into Postgres
 requirements.txt
 docker-compose.yml
 .env.example
+scripts/
+  dev-up.ps1        ← One-command local bootstrap (PowerShell)
 seed/seed.sql       ← Schema + demo data
 sql/kpis.sql        ← Reference queries
 tests/              ← Unit + integration test suites
@@ -66,6 +68,7 @@ docs/
   vision.md
   roadmap.md
   schema.md
+  importing-data.md
   architecture.md
   decisions.md
 ```

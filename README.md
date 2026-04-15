@@ -45,6 +45,17 @@ full format specification, required columns, and common errors.
 
 **Prerequisites:** Docker and Python 3.10+.
 
+### One-command bootstrap (Windows / PowerShell)
+
+```powershell
+.\scripts\dev-up.ps1
+```
+
+This creates a virtual environment, installs dependencies, starts Docker,
+seeds the database, and launches the app.
+
+### Manual steps
+
 ```bash
 # 1. Start the database
 docker compose up -d
@@ -55,11 +66,18 @@ python -m venv .venv
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Seed the database
-psql postgresql://postgres:postgres@localhost:5434/reporting -f seed/seed.sql
+# 3. Copy environment config
+# Windows:  copy .env.example .env
+# macOS/Linux: cp .env.example .env
 
-# 4. Run the dashboard
-streamlit run app.py
+# 4. Seed the database (choose one)
+# If psql is on your PATH:
+psql postgresql://postgres:postgres@localhost:5434/reporting -f seed/seed.sql
+# Or via the Docker container (no local psql needed):
+docker exec -i reporting_db psql -U postgres -d reporting < seed/seed.sql
+
+# 5. Run the dashboard
+python -m streamlit run app.py
 ```
 
 ## Configuration
@@ -89,6 +107,8 @@ loader.py           Atomic TRUNCATE + reload into Postgres
 requirements.txt
 docker-compose.yml
 .env.example
+scripts/
+  dev-up.ps1        One-command local bootstrap (PowerShell)
 seed/seed.sql       Schema + demo data (idempotent)
 sql/kpis.sql        Reference queries
 tests/              Test suite (unit + integration)
@@ -104,11 +124,11 @@ docs/
 ## Running tests
 
 ```bash
-pip install pytest
-pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
-Integration tests require a running seeded Postgres instance.
+Integration tests require a running seeded Postgres instance
+(`docker compose up -d` + seed applied).
 
 ## Roadmap
 - [x] Normalised schema (customers, categories, products, orders, order_items)

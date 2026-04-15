@@ -24,3 +24,7 @@ jobs:
       - name: Basic sanity check
         run: |
           python -m compileall .
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -v
