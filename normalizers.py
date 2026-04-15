@@ -13,10 +13,15 @@ from canonical_model import CANONICAL_ENTITIES, EntitySpec
 
 def normalize_frames(
     frames: dict[str, pd.DataFrame],
+    entity_specs: tuple | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """Return a copy of *frames* with each entity normalized to canonical types."""
+    """Return a copy of *frames* with each entity normalized to canonical types.
+
+    *entity_specs* defaults to ``CANONICAL_ENTITIES`` (order reporting model).
+    """
+    specs = entity_specs or CANONICAL_ENTITIES
     out: dict[str, pd.DataFrame] = {}
-    for spec in CANONICAL_ENTITIES:
+    for spec in specs:
         if spec.name not in frames:
             continue
         out[spec.name] = _normalize_entity(spec, frames[spec.name].copy())
@@ -36,6 +41,9 @@ def _normalize_entity(spec: EntitySpec, df: pd.DataFrame) -> pd.DataFrame:
             df[col.name] = pd.to_numeric(df[col.name], errors="coerce")
             # Round and convert to nullable int (handles NaN gracefully)
             df[col.name] = df[col.name].round(0).astype("Int64")
+
+        elif col.dtype == "float":
+            df[col.name] = pd.to_numeric(df[col.name], errors="coerce").astype("float64")
 
         elif col.dtype == "date":
             df[col.name] = pd.to_datetime(

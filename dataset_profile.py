@@ -12,6 +12,13 @@ from enum import Enum
 from pathlib import Path
 
 
+class ProfileType(str, Enum):
+    """Analytics profile families supported by the dashboard."""
+
+    ORDER_REPORTING = "order_reporting"
+    FLAT_METRIC = "flat_metric"
+
+
 class SourceType(str, Enum):
     """Supported data-source types."""
 
@@ -43,6 +50,7 @@ class ImportResult:
     success: bool
     source_type: SourceType
     source_label: str  # human-readable name for the dataset
+    profile_type: ProfileType = ProfileType.ORDER_REPORTING
     issues: list[ValidationIssue] = field(default_factory=list)
     row_counts: dict[str, int] = field(default_factory=dict)  # entity → rows loaded
 
@@ -61,4 +69,5 @@ class DatasetProfile:
 
     source_type: SourceType
     label: str
+    profile_type: ProfileType = ProfileType.ORDER_REPORTING
     row_counts: dict[str, int] = field(default_factory=dict)

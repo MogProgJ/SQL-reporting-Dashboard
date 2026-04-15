@@ -10,10 +10,16 @@ from io import BytesIO
 
 import pandas as pd
 
-from dataset_profile import DatasetProfile, ImportResult, SourceType, ValidationIssue
-from loader import load_into_db
+from dataset_profile import DatasetProfile, ImportResult, ProfileType, SourceType, ValidationIssue
+from loader import load_flat_metrics, load_into_db
 from normalizers import normalize_frames
-from readers import ReaderError, read_csv_bundle, read_excel_workbook
+from readers import (
+    ReaderError,
+    read_csv_bundle,
+    read_excel_workbook,
+    read_flat_metric_csv,
+    read_flat_metric_excel,
+)
 from validators import validate_dataframes
 
 
@@ -45,6 +51,41 @@ def import_excel_workbook(
     return _import_frames(frames, SourceType.EXCEL_WORKBOOK, label)
 
 
+# ── Flat-metric profile imports ─────────────────────────────────
+
+
+def import_flat_metric_csv(
+    buf: BytesIO,
+    label: str = "Flat metric CSV",
+) -> ImportResult:
+    """Import a single CSV file as flat-metric data."""
+    from flat_metric_model import FLAT_METRIC_ENTITIES
+
+    try:
+        frames = read_flat_metric_csv(buf)
+    except ReaderError as exc:
+        return _reader_error_result(exc, SourceType.CSV_BUNDLE, label, ProfileType.FLAT_METRIC)
+    except Exception as exc:
+        return _unexpected_error_result(exc, SourceType.CSV_BUNDLE, label, ProfileType.FLAT_METRIC)
+    return _import_flat_metric_frames(frames, SourceType.CSV_BUNDLE, label)
+
+
+def import_flat_metric_excel(
+    buf: BytesIO,
+    label: str = "Flat metric Excel",
+) -> ImportResult:
+    """Import a single Excel sheet as flat-metric data."""
+    from flat_metric_model import FLAT_METRIC_ENTITIES
+
+    try:
+        frames = read_flat_metric_excel(buf)
+    except ReaderError as exc:
+        return _reader_error_result(exc, SourceType.EXCEL_WORKBOOK, label, ProfileType.FLAT_METRIC)
+    except Exception as exc:
+        return _unexpected_error_result(exc, SourceType.EXCEL_WORKBOOK, label, ProfileType.FLAT_METRIC)
+    return _import_flat_metric_frames(frames, SourceType.EXCEL_WORKBOOK, label)
+
+
 def get_demo_profile() -> DatasetProfile:
     """Return a profile describing the built-in seed dataset."""
     return DatasetProfile(
@@ -54,7 +95,7 @@ def get_demo_profile() -> DatasetProfile:
 
 
 def get_current_row_counts() -> dict[str, int]:
-    """Query current row counts from the reporting tables."""
+    """Query current row counts from the order reporting tables."""
     from db import fetch_scalar
 
     counts: dict[str, int] = {}
@@ -64,11 +105,22 @@ def get_current_row_counts() -> dict[str, int]:
     return counts
 
 
+def get_flat_metric_row_counts() -> dict[str, int]:
+    """Query current row counts from the flat_metrics table."""
+    from db import fetch_scalar
+
+    val = fetch_scalar("SELECT COUNT(*) FROM flat_metrics;")
+    return {"flat_metrics": int(val) if val else 0}
+
+
 # ── Internal ────────────────────────────────────────────────────
 
 
 def _reader_error_result(
-    exc: ReaderError, source_type: SourceType, label: str,
+    exc: ReaderError,
+    source_type: SourceType,
+    label: str,
+    profile_type: ProfileType = ProfileType.ORDER_REPORTING,
 ) -> ImportResult:
     """Convert a ReaderError into a structured ImportResult."""
     msg = exc.summary
@@ -78,18 +130,23 @@ def _reader_error_result(
         success=False,
         source_type=source_type,
         source_label=label,
+        profile_type=profile_type,
         issues=[ValidationIssue(entity="", column="", message=msg)],
     )
 
 
 def _unexpected_error_result(
-    exc: Exception, source_type: SourceType, label: str,
+    exc: Exception,
+    source_type: SourceType,
+    label: str,
+    profile_type: ProfileType = ProfileType.ORDER_REPORTING,
 ) -> ImportResult:
     """Convert an unexpected exception into a structured ImportResult."""
     return ImportResult(
         success=False,
         source_type=source_type,
         source_label=label,
+        profile_type=profile_type,
         issues=[
             ValidationIssue(
                 entity="",
@@ -151,6 +208,59 @@ def _import_frames(
         source_type=source_type,
         source_label=label,
         issues=issues,  # may contain warnings
+        row_counts=row_counts,
+    )
+
+
+def _import_flat_metric_frames(
+    frames: dict[str, pd.DataFrame],
+    source_type: SourceType,
+    label: str,
+) -> ImportResult:
+    """Validate, normalize, and load flat-metric DataFrames."""
+    from flat_metric_model import FLAT_METRIC_ENTITIES
+
+    for key in list(frames.keys()):
+        frames[key].columns = [c.strip().lower() for c in frames[key].columns]
+
+    issues = validate_dataframes(frames, entity_specs=FLAT_METRIC_ENTITIES)
+    errors = [i for i in issues if i.severity == "error"]
+
+    if errors:
+        return ImportResult(
+            success=False,
+            source_type=source_type,
+            source_label=label,
+            profile_type=ProfileType.FLAT_METRIC,
+            issues=issues,
+        )
+
+    normalized = normalize_frames(frames, entity_specs=FLAT_METRIC_ENTITIES)
+
+    try:
+        row_counts = load_flat_metrics(normalized)
+    except Exception as exc:
+        issues.append(
+            ValidationIssue(
+                entity="",
+                column="",
+                message=f"Database load failed: {exc}",
+            )
+        )
+        return ImportResult(
+            success=False,
+            source_type=source_type,
+            source_label=label,
+            profile_type=ProfileType.FLAT_METRIC,
+            issues=issues,
+        )
+
+    return ImportResult(
+        success=True,
+        source_type=source_type,
+        source_label=label,
+        profile_type=ProfileType.FLAT_METRIC,
+        issues=issues,
         row_counts=row_counts,
     )
 

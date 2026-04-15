@@ -618,3 +618,378 @@ class TestTemplateGeneration:
         issues = validate_dataframes(frames)
         errors = [i for i in issues if i.severity == "error"]
         assert errors == [], f"Template should not have validation errors: {errors}"
+
+
+# ── Flat metric model ───────────────────────────────────────────
+
+
+class TestFlatMetricModel:
+    def test_single_entity_defined(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+
+        assert len(FLAT_METRIC_ENTITIES) == 1
+        assert FLAT_METRIC_ENTITIES[0].name == "flat_metrics"
+
+    def test_required_columns(self):
+        from flat_metric_model import FLAT_METRICS
+
+        col_names = FLAT_METRICS.required_column_names
+        assert "entity" in col_names
+        assert "metric_name" in col_names
+        assert "metric_value" in col_names
+
+    def test_optional_columns_nullable(self):
+        from flat_metric_model import FLAT_METRICS
+
+        col_map = {c.name: c for c in FLAT_METRICS.columns}
+        assert col_map["year"].nullable is True
+        assert col_map["score"].nullable is True
+        assert col_map["rank"].nullable is True
+        assert col_map["entity"].nullable is False
+
+    def test_natural_key(self):
+        from flat_metric_model import FLAT_METRICS
+
+        assert FLAT_METRICS.natural_key == ("entity", "metric_name")
+
+    def test_entity_map(self):
+        from flat_metric_model import FLAT_METRIC_ENTITY_MAP
+
+        assert "flat_metrics" in FLAT_METRIC_ENTITY_MAP
+
+
+# ── Profile type ────────────────────────────────────────────────
+
+
+class TestProfileType:
+    def test_profile_type_values(self):
+        from dataset_profile import ProfileType
+
+        assert ProfileType.ORDER_REPORTING.value == "order_reporting"
+        assert ProfileType.FLAT_METRIC.value == "flat_metric"
+
+    def test_import_result_has_profile_type(self):
+        from dataset_profile import ImportResult, ProfileType, SourceType
+
+        result = ImportResult(
+            success=True,
+            source_type=SourceType.CSV_BUNDLE,
+            source_label="test",
+            profile_type=ProfileType.FLAT_METRIC,
+        )
+        assert result.profile_type == ProfileType.FLAT_METRIC
+
+    def test_import_result_default_profile(self):
+        from dataset_profile import ImportResult, ProfileType, SourceType
+
+        result = ImportResult(
+            success=True,
+            source_type=SourceType.CSV_BUNDLE,
+            source_label="test",
+        )
+        assert result.profile_type == ProfileType.ORDER_REPORTING
+
+    def test_dataset_profile_has_profile_type(self):
+        from dataset_profile import DatasetProfile, ProfileType, SourceType
+
+        profile = DatasetProfile(
+            source_type=SourceType.DEMO_SEED,
+            label="demo",
+            profile_type=ProfileType.FLAT_METRIC,
+        )
+        assert profile.profile_type == ProfileType.FLAT_METRIC
+
+
+# ── Flat metric validators ──────────────────────────────────────
+
+
+def _make_valid_fm_frame() -> dict[str, pd.DataFrame]:
+    """Return a minimal valid flat-metric DataFrame."""
+    return {
+        "flat_metrics": pd.DataFrame({
+            "entity": ["USA", "China"],
+            "metric_name": ["GDP", "GDP"],
+            "metric_value": [65000.0, 13000.0],
+            "year": [2023, 2023],
+            "score": [95.0, 78.0],
+            "rank": [1, 2],
+        })
+    }
+
+
+class TestFlatMetricValidators:
+    def test_valid_frame_no_errors(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from validators import validate_dataframes
+
+        frames = _make_valid_fm_frame()
+        issues = validate_dataframes(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        errors = [i for i in issues if i.severity == "error"]
+        assert errors == []
+
+    def test_missing_entity_column(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from validators import validate_dataframes
+
+        frames = {
+            "flat_metrics": pd.DataFrame({
+                "metric_name": ["GDP"],
+                "metric_value": [65000.0],
+            })
+        }
+        issues = validate_dataframes(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        errors = [i for i in issues if i.severity == "error"]
+        assert any("entity" in e.message for e in errors)
+
+    def test_null_metric_value(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from validators import validate_dataframes
+
+        frames = {
+            "flat_metrics": pd.DataFrame({
+                "entity": ["USA"],
+                "metric_name": ["GDP"],
+                "metric_value": [None],
+            })
+        }
+        issues = validate_dataframes(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        errors = [i for i in issues if i.severity == "error"]
+        assert any("null" in e.message.lower() for e in errors)
+
+    def test_nullable_year_allowed(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from validators import validate_dataframes
+
+        frames = {
+            "flat_metrics": pd.DataFrame({
+                "entity": ["USA"],
+                "metric_name": ["GDP"],
+                "metric_value": [65000.0],
+                "year": [None],
+                "score": [None],
+                "rank": [None],
+            })
+        }
+        issues = validate_dataframes(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        errors = [i for i in issues if i.severity == "error"]
+        assert errors == []
+
+    def test_non_numeric_metric_value(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from validators import validate_dataframes
+
+        frames = {
+            "flat_metrics": pd.DataFrame({
+                "entity": ["USA"],
+                "metric_name": ["GDP"],
+                "metric_value": ["not a number"],
+            })
+        }
+        issues = validate_dataframes(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        errors = [i for i in issues if i.severity == "error"]
+        assert any("number" in e.message.lower() for e in errors)
+
+
+# ── Flat metric normalizers ─────────────────────────────────────
+
+
+class TestFlatMetricNormalizers:
+    def test_float_coercion(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from normalizers import normalize_frames
+
+        frames = {
+            "flat_metrics": pd.DataFrame({
+                "entity": ["USA"],
+                "metric_name": ["GDP"],
+                "metric_value": ["65000"],
+                "year": ["2023"],
+                "score": ["95.2"],
+                "rank": ["1"],
+            })
+        }
+        result = normalize_frames(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        df = result["flat_metrics"]
+        assert df["metric_value"].dtype == "float64"
+        assert df["year"].dtype == "Int64"
+
+    def test_column_name_lowercased(self):
+        from flat_metric_model import FLAT_METRIC_ENTITIES
+        from normalizers import normalize_frames
+
+        frames = {
+            "flat_metrics": pd.DataFrame({
+                "Entity": ["USA"],
+                "METRIC_NAME": ["GDP"],
+                "Metric_Value": [65000.0],
+            })
+        }
+        result = normalize_frames(frames, entity_specs=FLAT_METRIC_ENTITIES)
+        df = result["flat_metrics"]
+        assert "entity" in df.columns
+        assert "metric_name" in df.columns
+        assert "metric_value" in df.columns
+
+
+# ── Flat metric readers ─────────────────────────────────────────
+
+
+class TestFlatMetricCSVReader:
+    def test_reads_valid_csv(self):
+        from readers import read_flat_metric_csv
+
+        csv_data = "entity,metric_name,metric_value\nUSA,GDP,65000\n"
+        buf = BytesIO(csv_data.encode("utf-8"))
+        frames = read_flat_metric_csv(buf)
+        assert "flat_metrics" in frames
+        assert len(frames["flat_metrics"]) == 1
+
+    def test_missing_column_raises(self):
+        from readers import ReaderError, read_flat_metric_csv
+
+        csv_data = "entity,some_other\nUSA,123\n"
+        buf = BytesIO(csv_data.encode("utf-8"))
+        with pytest.raises(ReaderError, match="missing required"):
+            read_flat_metric_csv(buf)
+
+    def test_empty_csv_raises(self):
+        from readers import ReaderError, read_flat_metric_csv
+
+        csv_data = "entity,metric_name,metric_value\n"
+        buf = BytesIO(csv_data.encode("utf-8"))
+        with pytest.raises(ReaderError, match="no data rows"):
+            read_flat_metric_csv(buf)
+
+
+class TestFlatMetricExcelReader:
+    def test_reads_valid_excel(self):
+        from readers import read_flat_metric_excel
+
+        buf = BytesIO()
+        df = pd.DataFrame({
+            "entity": ["USA"],
+            "metric_name": ["GDP"],
+            "metric_value": [65000.0],
+        })
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False)
+        buf.seek(0)
+
+        frames = read_flat_metric_excel(buf)
+        assert "flat_metrics" in frames
+        assert len(frames["flat_metrics"]) == 1
+
+    def test_missing_column_raises(self):
+        from readers import ReaderError, read_flat_metric_excel
+
+        buf = BytesIO()
+        df = pd.DataFrame({"entity": ["USA"], "some_other": [123]})
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False)
+        buf.seek(0)
+
+        with pytest.raises(ReaderError, match="missing required"):
+            read_flat_metric_excel(buf)
+
+
+# ── Flat metric importer ────────────────────────────────────────
+
+
+class TestFlatMetricImporter:
+    def test_csv_import_success(self):
+        from importer import import_flat_metric_csv
+
+        csv_data = "entity,metric_name,metric_value,year\nUSA,GDP,65000,2023\n"
+        buf = BytesIO(csv_data.encode("utf-8"))
+
+        with patch("importer.load_flat_metrics", return_value={"flat_metrics": 1}):
+            result = import_flat_metric_csv(buf, label="test")
+
+        assert result.success is True
+        assert result.row_counts == {"flat_metrics": 1}
+
+    def test_csv_import_validation_failure(self):
+        from importer import import_flat_metric_csv
+
+        csv_data = "entity,metric_name,metric_value\n"
+        buf = BytesIO(csv_data.encode("utf-8"))
+
+        # Empty CSV raises ReaderError
+        result = import_flat_metric_csv(buf, label="test")
+        assert result.success is False
+
+    def test_excel_import_success(self):
+        from importer import import_flat_metric_excel
+
+        buf = BytesIO()
+        df = pd.DataFrame({
+            "entity": ["USA"],
+            "metric_name": ["GDP"],
+            "metric_value": [65000.0],
+        })
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False)
+        buf.seek(0)
+
+        with patch("importer.load_flat_metrics", return_value={"flat_metrics": 1}):
+            result = import_flat_metric_excel(buf, label="test")
+
+        assert result.success is True
+
+    def test_csv_import_db_failure(self):
+        from importer import import_flat_metric_csv
+
+        csv_data = "entity,metric_name,metric_value\nUSA,GDP,65000\n"
+        buf = BytesIO(csv_data.encode("utf-8"))
+
+        with patch("importer.load_flat_metrics", side_effect=RuntimeError("db down")):
+            result = import_flat_metric_csv(buf, label="test")
+
+        assert result.success is False
+        assert any("Database load failed" in e.message for e in result.errors)
+
+
+# ── Flat metric query filter builder ────────────────────────────
+
+
+class TestFlatMetricFilters:
+    def test_no_filters(self):
+        from flat_metric_queries import _build_fm_filters
+
+        where, params = _build_fm_filters()
+        assert where == ""
+        assert params == []
+
+    def test_entities_filter(self):
+        from flat_metric_queries import _build_fm_filters
+
+        where, params = _build_fm_filters(entities=["USA", "China"])
+        assert "entity = ANY(%s)" in where
+        assert params == [["USA", "China"]]
+
+    def test_metric_names_filter(self):
+        from flat_metric_queries import _build_fm_filters
+
+        where, params = _build_fm_filters(metric_names=["GDP"])
+        assert "metric_name = ANY(%s)" in where
+        assert params == [["GDP"]]
+
+    def test_year_range_filter(self):
+        from flat_metric_queries import _build_fm_filters
+
+        where, params = _build_fm_filters(year_from=2021, year_to=2023)
+        assert "year >= %s" in where
+        assert "year <= %s" in where
+        assert params == [2021, 2023]
+
+    def test_combined_filters(self):
+        from flat_metric_queries import _build_fm_filters
+
+        where, params = _build_fm_filters(
+            entities=["USA"],
+            metric_names=["GDP"],
+            year_from=2021,
+            year_to=2023,
+        )
+        assert where.startswith("WHERE")
+        assert len(params) == 4

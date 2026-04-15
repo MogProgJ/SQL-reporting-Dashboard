@@ -13,9 +13,13 @@ import pandas as pd
 
 from canonical_model import CANONICAL_ENTITIES
 
-# Entity names the readers look for.
+# Entity names the readers look for (order-reporting profile).
 _ENTITY_NAMES = {e.name for e in CANONICAL_ENTITIES}
 EXPECTED_NAMES_SORTED: list[str] = sorted(_ENTITY_NAMES)
+
+# Flat-metric profile expected columns.
+_FM_REQUIRED_COLS = {"entity", "metric_name", "metric_value"}
+_FM_ALL_COLS = _FM_REQUIRED_COLS | {"year", "score", "rank"}
 
 
 class ReaderError(Exception):
@@ -135,3 +139,66 @@ def read_excel_workbook(
         if entity_name in sheet_map:
             frames[entity_name] = xls.parse(sheet_map[entity_name])
     return frames
+
+
+# ── Flat-metric readers (single CSV / single Excel sheet) ───────
+
+
+def _validate_fm_columns(df: pd.DataFrame) -> None:
+    """Raise ``ReaderError`` if the DataFrame lacks required flat-metric columns."""
+    cols = {c.strip().lower() for c in df.columns}
+    missing = _FM_REQUIRED_COLS - cols
+    if missing:
+        raise ReaderError(
+            summary="File is missing required flat-metric columns.",
+            detail=(
+                f"Missing: {', '.join(sorted(missing))}.\n"
+                f"Required: {', '.join(sorted(_FM_REQUIRED_COLS))}.\n"
+                f"Optional: {', '.join(sorted(_FM_ALL_COLS - _FM_REQUIRED_COLS))}.\n"
+                f"Found: {', '.join(sorted(cols))}."
+            ),
+        )
+
+
+def read_flat_metric_csv(buf: BytesIO) -> dict[str, pd.DataFrame]:
+    """Read a single CSV file into a ``flat_metrics`` DataFrame.
+
+    Raises ``ReaderError`` if required columns are missing.
+    """
+    try:
+        buf.seek(0)
+        df = pd.read_csv(buf)
+    except Exception as exc:
+        raise ReaderError(
+            summary="Could not parse the uploaded CSV file.",
+            detail=f"pandas error: {exc}",
+        )
+    if df.empty:
+        raise ReaderError(
+            summary="The uploaded CSV file has no data rows.",
+            detail="Add at least one row of flat-metric data and try again.",
+        )
+    _validate_fm_columns(df)
+    return {"flat_metrics": df}
+
+
+def read_flat_metric_excel(buf: BytesIO) -> dict[str, pd.DataFrame]:
+    """Read the first sheet of an Excel workbook into a ``flat_metrics`` DataFrame.
+
+    Raises ``ReaderError`` if openpyxl is missing or columns are wrong.
+    """
+    _check_openpyxl()
+    try:
+        df = pd.read_excel(buf, engine="openpyxl")
+    except Exception as exc:
+        raise ReaderError(
+            summary="Could not open the uploaded file as an Excel workbook.",
+            detail=f"pandas/openpyxl error: {exc}",
+        )
+    if df.empty:
+        raise ReaderError(
+            summary="The uploaded Excel sheet has no data rows.",
+            detail="Add at least one row of flat-metric data and try again.",
+        )
+    _validate_fm_columns(df)
+    return {"flat_metrics": df}

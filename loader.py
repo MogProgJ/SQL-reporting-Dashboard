@@ -129,3 +129,39 @@ def _load_order_items(cur, df: pd.DataFrame) -> int:
             (int(row["order_id"]), prod_id, int(row["quantity"]), int(row["unit_price_cents"])),
         )
     return len(df)
+
+
+# ── Flat-metric profile loader ──────────────────────────────────
+
+def load_flat_metrics(frames: dict[str, pd.DataFrame]) -> dict[str, int]:
+    """Replace flat_metrics table with the contents of *frames*.
+
+    Returns a dict of entity_name → rows inserted.
+    Raises on failure (transaction is rolled back automatically).
+    """
+    df = frames.get("flat_metrics")
+    if df is None or df.empty:
+        return {"flat_metrics": 0}
+
+    conn = get_connection()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE flat_metrics RESTART IDENTITY;")
+                for _, row in df.iterrows():
+                    cur.execute(
+                        "INSERT INTO flat_metrics "
+                        "(entity, metric_name, metric_value, year, score, rank) "
+                        "VALUES (%s, %s, %s, %s, %s, %s);",
+                        (
+                            str(row["entity"]),
+                            str(row["metric_name"]),
+                            float(row["metric_value"]),
+                            int(row["year"]) if pd.notna(row.get("year")) else None,
+                            float(row["score"]) if pd.notna(row.get("score")) else None,
+                            int(row["rank"]) if pd.notna(row.get("rank")) else None,
+                        ),
+                    )
+        return {"flat_metrics": len(df)}
+    finally:
+        conn.close()

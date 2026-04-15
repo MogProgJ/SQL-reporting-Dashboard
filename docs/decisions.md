@@ -114,3 +114,30 @@ the database contents via TRUNCATE + reload inside a single transaction.
 - Dashboard queries remain completely unchanged — they still read the same
   five tables with the same columns.
 - No auth or multi-tenancy: one dataset at a time, visible to all users.
+
+## ADR 008: Multi-profile analytics with profile selector (Phase 3C)
+
+**Context:** The dashboard was locked to a single analytics profile — five
+normalised order-reporting tables with FK relationships. To demonstrate that the
+architecture can support different analytical domains (e.g. country statistics,
+university rankings), the system needs a second profile family with its own
+semantics, filters, KPIs, and charts — without breaking the existing order profile.
+
+**Decision:** Introduce a `ProfileType` enum (`ORDER_REPORTING`, `FLAT_METRIC`)
+and a second canonical model (`flat_metric_model.py`) with a single flat table.
+Parameterise validators and normalizers to accept any entity spec tuple.
+Extract per-profile dashboard rendering into separate modules
+(`dashboard_order.py`, `dashboard_flat_metric.py`). Rewrite `app.py` as a thin
+orchestrator with a sidebar profile selector that routes to the correct module.
+
+**Consequences:**
+- Two fully independent analytics profiles coexist in the same database.
+- Adding a third profile requires: one model file, one query module, one
+  dashboard module, and a new `ProfileType` value — no changes to the pipeline
+  infrastructure.
+- `app.py` dropped from ~680 to ~240 lines; each dashboard module is
+  independently testable.
+- The "float" dtype is now supported across validators and normalizers.
+- Nullable columns may be absent from import files without triggering errors.
+- `scripts/dev-up.ps1` seeding was fixed (pipe instead of redirect) as part
+  of this phase.

@@ -63,6 +63,37 @@ categories 1──∞  products
 
 This schema supports: top products, category mix, customer revenue, order trends, and average order value reporting.
 
+---
+
+## Flat-metric profile
+
+The flat-metric profile (`flat_metric_model.py`) provides a second analytics family that stores generic entity-by-metric-by-year data. No FK relationships — each row is self-contained.
+
+### flat_metrics
+
+| Column       | Type             | Constraints          |
+|--------------|------------------|----------------------|
+| id           | BIGSERIAL        | PRIMARY KEY          |
+| entity       | TEXT             | NOT NULL             |
+| metric_name  | TEXT             | NOT NULL             |
+| metric_value | DOUBLE PRECISION | NOT NULL             |
+| year         | INTEGER          |                      |
+| score        | DOUBLE PRECISION |                      |
+| rank         | INTEGER          |                      |
+
+The demo seed populates 90 rows: 10 countries × 3 metrics (GDP per Capita, Life Expectancy, HDI Score) × 3 years (2021–2023).
+
+### Flat-metric import
+
+When importing flat-metric CSV or Excel files, the import pipeline:
+
+1. **Reads** a single CSV file or the first sheet of an Excel workbook.
+2. **Validates** against the flat-metric entity spec — required columns (`entity`, `metric_name`, `metric_value`), types (float, int, text), nullability. Nullable columns (`year`, `score`, `rank`) may be absent entirely.
+3. **Normalizes** column names (lowercase, stripped) and coerces types (`float64` for metric_value/score, `Int64` for year/rank).
+4. **Loads** atomically: TRUNCATE `flat_metrics` + INSERT.
+
+---
+
 ## Import pipeline
 
 When importing CSV bundles or Excel workbooks, the import pipeline:

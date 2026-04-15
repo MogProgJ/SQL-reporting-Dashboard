@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added (Phase 3C — Multi-Profile Analytics)
+- `ProfileType` enum (`ORDER_REPORTING`, `FLAT_METRIC`) in `dataset_profile.py`
+- Flat-metric canonical model (`flat_metric_model.py`) — single entity with entity/metric_name/metric_value/year/score/rank columns, "float" dtype support
+- `flat_metrics` table in `seed/seed.sql` with 90-row demo dataset (10 countries × 3 metrics × 3 years)
+- Parameterised validators and normalizers — accept optional `entity_specs` for any profile family
+- Nullable-column tolerance: missing nullable columns no longer produce validation errors
+- Float dtype coercion in normalizers (explicit `float64` cast)
+- Float dtype validation in validators (`_check_float_column`)
+- Flat-metric CSV and Excel readers (`read_flat_metric_csv`, `read_flat_metric_excel`) in `readers.py`
+- Flat-metric database loader (`load_flat_metrics`) in `loader.py`
+- Flat-metric import orchestration (`import_flat_metric_csv`, `import_flat_metric_excel`) in `importer.py`
+- Full flat-metric query module (`flat_metric_queries.py`) — KPIs, rankings, comparison, trend, detail with parameterised filter builder
+- Flat-metric dashboard module (`dashboard_flat_metric.py`) — 3 tabs: Rankings, Trends, Detail & Export
+- Extracted order-profile dashboard into `dashboard_order.py`
+- Profile selector radio in sidebar — switches between Order Reporting and Flat Metric views
+- `app.py` rewritten as thin orchestrator (~240 lines, down from ~680)
+- 26 new flat-metric tests + 4 profile-type tests (102 total, 0 failures)
+
+### Fixed (Phase 3C)
+- `scripts/dev-up.ps1` seeding uses `Get-Content -Raw | docker exec` pipe (was fragile `< $seedFile` redirect)
+
 ### Added (Phase 3B — Local Bootstrap & Repo Hygiene)
 - `scripts/dev-up.ps1` — one-command local bootstrap: venv, deps, Docker, seed, Streamlit
 - CI workflow (`ci.yml`) now runs `python -m pytest tests/ -v` after compile check

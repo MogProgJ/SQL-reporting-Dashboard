@@ -16,16 +16,19 @@ from dataset_profile import ValidationIssue
 
 def validate_dataframes(
     frames: dict[str, pd.DataFrame],
+    entity_specs: tuple[EntitySpec, ...] | None = None,
 ) -> list[ValidationIssue]:
-    """Validate a full set of entity DataFrames against the canonical model.
+    """Validate a full set of entity DataFrames against entity specs.
 
     *frames* maps entity name → DataFrame.
+    *entity_specs* defaults to ``CANONICAL_ENTITIES`` (order reporting model).
     Returns all issues found (errors + warnings).
     """
+    specs = entity_specs or CANONICAL_ENTITIES
     issues: list[ValidationIssue] = []
 
     # 1. Required entities present
-    for spec in CANONICAL_ENTITIES:
+    for spec in specs:
         if spec.name not in frames:
             issues.append(
                 ValidationIssue(
@@ -66,6 +69,8 @@ def _validate_entity(spec: EntitySpec, df: pd.DataFrame) -> list[ValidationIssue
     actual = set(df.columns)
     for col in spec.columns:
         if col.name not in actual:
+            if col.nullable:
+                continue  # nullable columns may be absent
             issues.append(
                 ValidationIssue(
                     entity=spec.name,
@@ -94,6 +99,8 @@ def _validate_entity(spec: EntitySpec, df: pd.DataFrame) -> list[ValidationIssue
         # Type-specific checks
         if col.dtype == "int":
             issues.extend(_check_int_column(spec.name, col.name, series))
+        elif col.dtype == "float":
+            issues.extend(_check_float_column(spec.name, col.name, series))
         elif col.dtype == "date":
             issues.extend(_check_date_column(spec.name, col.name, series))
         elif col.dtype == "text":
@@ -106,6 +113,28 @@ def _validate_entity(spec: EntitySpec, df: pd.DataFrame) -> list[ValidationIssue
                 _check_positive(spec.name, col_name, df[col_name])
             )
 
+    return issues
+
+
+def _check_float_column(
+    entity: str, col: str, series: pd.Series
+) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    non_null = series.dropna()
+    if non_null.empty:
+        return issues
+    try:
+        pd.to_numeric(non_null, errors="raise")
+    except (ValueError, TypeError):
+        bad = pd.to_numeric(non_null, errors="coerce")
+        n = int(bad.isna().sum())
+        issues.append(
+            ValidationIssue(
+                entity=entity,
+                column=col,
+                message=f"{n} value(s) cannot be converted to number.",
+            )
+        )
     return issues
 
 

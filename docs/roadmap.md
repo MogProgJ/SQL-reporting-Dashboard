@@ -1,7 +1,7 @@
 # Roadmap
 
 Phased plan for the SQL Reporting Dashboard. Each phase builds on the last.
-Only phases 0–3A are implemented. Later phases are honest intentions, not
+Only phases 0–3C are implemented. Later phases are honest intentions, not
 promises.
 
 ## Phase 0 — Setup & DB Foundation ✅
@@ -70,7 +70,23 @@ promises.
 - Current limitation: only the canonical five-entity model is supported;
   arbitrary flat spreadsheets are not yet accepted
 
-## Phase 3C — Scenario Loading & Broader Data Flexibility (planned)
+## Phase 3C — Multi-Profile Analytics ✅
+
+- `ProfileType` enum: `ORDER_REPORTING`, `FLAT_METRIC` — extensible profile families
+- Flat-metric canonical model (`flat_metric_model.py`) — single entity with entity/metric_name/metric_value/year/score/rank; "float" dtype support
+- `flat_metrics` Postgres table + 90-row demo dataset (10 countries × 3 metrics × 3 years)
+- Parameterised validators and normalizers — accept any entity spec tuple
+- Nullable-column tolerance — missing nullable columns accepted without error
+- Flat-metric readers (`read_flat_metric_csv`, `read_flat_metric_excel`)
+- Flat-metric loader (`load_flat_metrics`) — atomic TRUNCATE + INSERT
+- Flat-metric import orchestration in `importer.py`
+- Full flat-metric query module (`flat_metric_queries.py`) — KPIs, rankings, comparison, trend, detail with parameterised filter builder
+- Extracted order dashboard → `dashboard_order.py` (4 tabs)
+- New flat-metric dashboard → `dashboard_flat_metric.py` (3 tabs: Rankings, Trends, Detail & Export)
+- `app.py` rewritten as thin orchestrator (~240 lines, down from ~680)
+- Profile selector radio in sidebar
+- `scripts/dev-up.ps1` seeding fixed (pipe instead of fragile redirect)
+- 30 new tests (102 total, 17 skipped, 0 failures)
 
 ## Phase 4 — Multi-Page Expansion (planned)
 
