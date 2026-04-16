@@ -15,7 +15,7 @@ FLAT_METRICS = EntitySpec(
         "Generic flat table of metrics.  Each row records one metric "
         "value for an entity, optionally for a specific year."
     ),
-    natural_key=("entity", "metric_name"),
+    natural_key=("entity", "metric_name", "year"),
     columns=(
         ColumnSpec("entity", "text", "The thing being measured (country, school, city, …)"),
         ColumnSpec("metric_name", "text", "What is being measured (GDP, Population, …)"),

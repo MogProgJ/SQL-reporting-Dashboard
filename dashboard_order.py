@@ -11,6 +11,7 @@ import plotly.express as px
 import streamlit as st
 
 from formatters import add_rank, cents_to_dollars, fmt_number
+from nav_state import OrderPage, set_page
 from queries import (
     find_outlier_days,
     find_outlier_orders,
@@ -239,6 +240,13 @@ def _render_overview(trend: pd.DataFrame, top_n: int, filters: dict) -> None:
                 use_container_width=True,
                 hide_index=True,
             )
+            cust_pick = st.selectbox(
+                "Inspect customer",
+                [""] + tc["customer"].tolist(),
+                key="ov_cust_pick",
+            )
+            if cust_pick:
+                set_page(OrderPage.CUSTOMER_DETAIL.value, target=cust_pick)
         else:
             _empty_state("No customer data.")
 
@@ -263,6 +271,13 @@ def _render_overview(trend: pd.DataFrame, top_n: int, filters: dict) -> None:
                 use_container_width=True,
                 hide_index=True,
             )
+            prod_pick = st.selectbox(
+                "Inspect product",
+                [""] + tp["product"].tolist(),
+                key="ov_prod_pick",
+            )
+            if prod_pick:
+                set_page(OrderPage.PRODUCT_DETAIL.value, target=prod_pick)
         else:
             _empty_state("No product data.")
 

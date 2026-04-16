@@ -182,3 +182,192 @@ def get_fm_detail(**filters) -> pd.DataFrame:
     ORDER BY entity, metric_name, year;
     """
     return run_query(sql, tuple(params) if params else None)
+
+
+# ── Entity detail queries ───────────────────────────────────────
+
+
+def get_fm_entity_summary(entity: str) -> pd.DataFrame:
+    """Summary stats for a single entity across all metrics and years."""
+    sql = """
+    SELECT
+      COUNT(*)                    AS total_rows,
+      COUNT(DISTINCT metric_name) AS metric_count,
+      MIN(year)                   AS min_year,
+      MAX(year)                   AS max_year,
+      ROUND(AVG(score)::numeric, 1)  AS avg_score
+    FROM flat_metrics
+    WHERE entity = %s;
+    """
+    return run_query(sql, (entity,))
+
+
+def get_fm_entity_metrics(entity: str) -> pd.DataFrame:
+    """All metric values for a single entity, ordered by metric and year."""
+    sql = """
+    SELECT
+      metric_name,
+      metric_value,
+      year,
+      score,
+      rank
+    FROM flat_metrics
+    WHERE entity = %s
+    ORDER BY metric_name, year;
+    """
+    return run_query(sql, (entity,))
+
+
+def get_fm_entity_trend(entity: str, metric_name: str) -> pd.DataFrame:
+    """Year-over-year values for one entity + one metric."""
+    sql = """
+    SELECT year, metric_value, score, rank
+    FROM flat_metrics
+    WHERE entity = %s AND metric_name = %s AND year IS NOT NULL
+    ORDER BY year;
+    """
+    return run_query(sql, (entity, metric_name))
+
+
+def get_fm_entity_comparison(entity: str, year: int | None = None) -> pd.DataFrame:
+    """All metrics for an entity in a given year (or latest)."""
+    if year is not None:
+        sql = """
+        SELECT metric_name, metric_value, score, rank
+        FROM flat_metrics
+        WHERE entity = %s AND year = %s
+        ORDER BY metric_name;
+        """
+        return run_query(sql, (entity, year))
+    # Latest year per metric
+    sql = """
+    SELECT DISTINCT ON (metric_name)
+      metric_name, metric_value, year, score, rank
+    FROM flat_metrics
+    WHERE entity = %s AND year IS NOT NULL
+    ORDER BY metric_name, year DESC;
+    """
+    return run_query(sql, (entity,))
+
+
+# ── Metric explorer queries ─────────────────────────────────────
+
+
+def get_fm_metric_summary(metric_name: str) -> pd.DataFrame:
+    """Summary stats for a single metric across all entities and years."""
+    sql = """
+    SELECT
+      COUNT(*)                  AS total_rows,
+      COUNT(DISTINCT entity)    AS entity_count,
+      MIN(year)                 AS min_year,
+      MAX(year)                 AS max_year,
+      ROUND(AVG(metric_value)::numeric, 2) AS avg_value,
+      ROUND(MIN(metric_value)::numeric, 2) AS min_value,
+      ROUND(MAX(metric_value)::numeric, 2) AS max_value
+    FROM flat_metrics
+    WHERE metric_name = %s;
+    """
+    return run_query(sql, (metric_name,))
+
+
+def get_fm_metric_top_entities(
+    metric_name: str, limit: int = 10, year: int | None = None
+) -> pd.DataFrame:
+    """Top entities by metric_value for a given metric (descending)."""
+    if year is not None:
+        sql = """
+        SELECT entity, metric_value, year, score, rank
+        FROM flat_metrics
+        WHERE metric_name = %s AND year = %s
+        ORDER BY metric_value DESC
+        LIMIT %s;
+        """
+        return run_query(sql, (metric_name, year, limit))
+    sql = """
+    SELECT DISTINCT ON (entity)
+      entity, metric_value, year, score, rank
+    FROM flat_metrics
+    WHERE metric_name = %s AND year IS NOT NULL
+    ORDER BY entity, year DESC;
+    """
+    df = run_query(sql, (metric_name,))
+    return df.sort_values("metric_value", ascending=False).head(limit)
+
+
+def get_fm_metric_bottom_entities(
+    metric_name: str, limit: int = 10, year: int | None = None
+) -> pd.DataFrame:
+    """Bottom entities by metric_value for a given metric (ascending)."""
+    if year is not None:
+        sql = """
+        SELECT entity, metric_value, year, score, rank
+        FROM flat_metrics
+        WHERE metric_name = %s AND year = %s
+        ORDER BY metric_value ASC
+        LIMIT %s;
+        """
+        return run_query(sql, (metric_name, year, limit))
+    sql = """
+    SELECT DISTINCT ON (entity)
+      entity, metric_value, year, score, rank
+    FROM flat_metrics
+    WHERE metric_name = %s AND year IS NOT NULL
+    ORDER BY entity, year DESC;
+    """
+    df = run_query(sql, (metric_name,))
+    return df.sort_values("metric_value", ascending=True).head(limit)
+
+
+def get_fm_metric_trend_avg(metric_name: str) -> pd.DataFrame:
+    """Average metric_value per year across all entities."""
+    sql = """
+    SELECT
+      year,
+      ROUND(AVG(metric_value)::numeric, 2) AS avg_value,
+      COUNT(DISTINCT entity)                AS entity_count
+    FROM flat_metrics
+    WHERE metric_name = %s AND year IS NOT NULL
+    GROUP BY year
+    ORDER BY year;
+    """
+    return run_query(sql, (metric_name,))
+
+
+def get_fm_metric_detail(metric_name: str, **filters) -> pd.DataFrame:
+    """All rows for a specific metric with optional filters."""
+    where, params = _build_fm_filters(**filters)
+    if where:
+        where += " AND metric_name = %s"
+    else:
+        where = "WHERE metric_name = %s"
+    params.append(metric_name)
+
+    sql = f"""
+    SELECT entity, metric_value, year, score, rank
+    FROM flat_metrics
+    {where}
+    ORDER BY entity, year;
+    """
+    return run_query(sql, tuple(params))
+
+
+def get_fm_metric_outliers(metric_name: str, year: int | None = None) -> pd.DataFrame:
+    """Return entities with values for IQR-based outlier detection."""
+    if year is not None:
+        sql = """
+        SELECT entity, metric_value, year, score, rank
+        FROM flat_metrics
+        WHERE metric_name = %s AND year = %s
+        ORDER BY metric_value DESC;
+        """
+        df = run_query(sql, (metric_name, year))
+    else:
+        sql = """
+        SELECT DISTINCT ON (entity)
+          entity, metric_value, year, score, rank
+        FROM flat_metrics
+        WHERE metric_name = %s AND year IS NOT NULL
+        ORDER BY entity, year DESC;
+        """
+        df = run_query(sql, (metric_name,))
+    return df

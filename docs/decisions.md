@@ -170,3 +170,35 @@ Additionally, harden `importer.get_current_row_counts()` and
 - Seed failures are reported immediately by the bootstrap script.
 - The readiness check adds one extra `information_schema` query per table per
   page load — negligible overhead for the small table counts involved.
+
+## ADR 010: Session-state navigation for deep-dive pages (Phase 4)
+
+**Context:** The dashboard showed breadth (KPIs, rankings, trends, outliers)
+but offered no way to explore a single entity, customer, product, or metric
+in depth. Users could only see aggregates — not drill down.
+
+**Decision:** Add `nav_state.py` — a lightweight session-state navigation layer
+using `st.session_state` with per-profile page enums (`OrderPage`,
+`FlatMetricPage`). Each profile has a SUMMARY page and 2–3 deep-dive pages.
+The sidebar shows a selectbox for page navigation; summary dashboards include
+"Inspect customer" / "Explore entity" hooks that call `set_page()` to navigate.
+A back-to-summary button appears on every deep-dive page.
+
+Five new page modules were created:
+- `page_fm_entity.py` — Entity detail: KPIs, time trend, metric comparison, export.
+- `page_fm_metric.py` — Metric explorer: top/bottom rankings, avg trend, IQR outliers, export.
+- `page_order_customer.py` — Customer detail: revenue trend, product mix, full orders.
+- `page_order_product.py` — Product detail: revenue trend, top customers, full orders.
+- `page_order_anomaly.py` — Anomaly explorer: IQR large orders, high-revenue days, raw data.
+
+**Consequences:**
+- Users can navigate from aggregate summaries to single-entity depth without
+  leaving the app or losing filter context.
+- No Streamlit multipage app complexity — everything stays in a single entry
+  point (`app.py`) with session-state routing.
+- The `flat_metric_model.py` natural key was corrected to include `year`,
+  and validators now detect natural key duplicates as warnings.
+- `queries.py` gained 8 new functions for customer/product deep dives.
+- `flat_metric_queries.py` gained 10 new functions for entity/metric deep dives.
+- Adding a new deep-dive page requires: one page module, one enum value, and a
+  routing clause in `app.py` — no framework overhead.

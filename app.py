@@ -46,6 +46,17 @@ from importer import (
     import_flat_metric_csv,
     import_flat_metric_excel,
 )
+from nav_state import (
+    FlatMetricPage,
+    OrderPage,
+    get_page,
+    render_nav,
+)
+import page_fm_entity
+import page_fm_metric
+import page_order_anomaly
+import page_order_customer
+import page_order_product
 from profile_state import (
     ReadinessStatus,
     check_flat_metric_readiness,
@@ -150,6 +161,9 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     is_order = profile_choice.startswith("\U0001f6d2")
+
+    # ── Page navigation ─────────────────────────────────────
+    render_nav(is_order)
 
     st.divider()
 
@@ -317,6 +331,20 @@ if not readiness.is_ready:
     profile_label = "Order Reporting" if is_order else "Flat Metric"
     _render_profile_not_ready(profile_label, readiness)
 elif is_order:
-    dashboard_order.render(filters, top_n)
+    page = get_page(is_order=True)
+    if page == OrderPage.CUSTOMER_DETAIL.value:
+        page_order_customer.render()
+    elif page == OrderPage.PRODUCT_DETAIL.value:
+        page_order_product.render()
+    elif page == OrderPage.ANOMALY_EXPLORER.value:
+        page_order_anomaly.render(filters)
+    else:
+        dashboard_order.render(filters, top_n)
 else:
-    dashboard_flat_metric.render(filters)
+    page = get_page(is_order=False)
+    if page == FlatMetricPage.ENTITY_DETAIL.value:
+        page_fm_entity.render()
+    elif page == FlatMetricPage.METRIC_EXPLORER.value:
+        page_fm_metric.render()
+    else:
+        dashboard_flat_metric.render(filters)

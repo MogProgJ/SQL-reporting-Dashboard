@@ -650,7 +650,7 @@ class TestFlatMetricModel:
     def test_natural_key(self):
         from flat_metric_model import FLAT_METRICS
 
-        assert FLAT_METRICS.natural_key == ("entity", "metric_name")
+        assert FLAT_METRICS.natural_key == ("entity", "metric_name", "year")
 
     def test_entity_map(self):
         from flat_metric_model import FLAT_METRIC_ENTITY_MAP

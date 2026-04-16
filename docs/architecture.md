@@ -29,9 +29,15 @@ This project is intentionally small, but structured like production code.
 ```
 
 - **profile_state.py** — Profile readiness checks. Queries `information_schema.tables` to determine if a profile's backing tables exist and contain data. Returns `ProfileReadiness` (status, present/missing tables, row counts). Used by `app.py` to gate rendering.
-- **app.py** — Thin orchestrator (~305 lines). Sidebar has profile selector (Order Reporting / Flat Metric), per-profile Data Source section, and per-profile filters. Runs readiness check before rendering; shows clean recovery guidance when tables are missing or empty. Delegates rendering to `dashboard_order.py` or `dashboard_flat_metric.py`.
-- **dashboard_order.py** — Order-profile dashboard: 4 tabs (Overview, Breakdown, Outliers, Detail & Export). Plotly charts, `st.column_config` formatting.
-- **dashboard_flat_metric.py** — Flat-metric dashboard: 3 tabs (Rankings, Trends, Detail & Export). Horizontal bar chart, line chart, ranking table.
+- **app.py** — Thin orchestrator (~330 lines). Sidebar has profile selector (Order Reporting / Flat Metric), page navigation, per-profile Data Source section, and per-profile filters. Runs readiness check before rendering; routes to summary dashboards or deep-dive pages based on nav state. Shows clean recovery guidance when tables are missing or empty. Delegates rendering to `dashboard_order.py`, `dashboard_flat_metric.py`, or the five `page_*` modules.
+- **dashboard_order.py** — Order-profile summary dashboard: 4 tabs (Overview, Breakdown, Outliers, Detail & Export). Plotly charts, `st.column_config` formatting. Includes navigation hooks to drill into customer/product detail.
+- **dashboard_flat_metric.py** — Flat-metric summary dashboard: 3 tabs (Rankings, Trends, Detail & Export). Horizontal bar chart, line chart, ranking table. Includes navigation hooks to drill into entity/metric detail.
+- **nav_state.py** — Lightweight session-state navigation. Per-profile page enums (`OrderPage`, `FlatMetricPage`), page/target state in `st.session_state`, sidebar selectbox, back button.
+- **page_fm_entity.py** — Flat Metric Entity Detail deep-dive: KPIs, time trend (metric selector), metric comparison bar chart, full data export.
+- **page_fm_metric.py** — Flat Metric Metric Explorer deep-dive: top/bottom entity rankings, average trend over time, IQR outlier detection, full data export.
+- **page_order_customer.py** — Order Customer Detail deep-dive: revenue and volume trends, product mix, full order-item table with export.
+- **page_order_product.py** — Order Product Detail deep-dive: revenue and units trends, top customers, full order-item table with export.
+- **page_order_anomaly.py** — Order Anomaly Explorer deep-dive: IQR-flagged large orders, high-revenue days with threshold display, raw data export.
 - **formatters.py** — Pure display helpers: `cents_to_dollars`, `fmt_number`, `fmt_pct`, `add_rank`. Tested independently.
 - **queries.py** — All SQL lives here. Functions accept filter kwargs and return DataFrames. Parameterized queries prevent injection. Includes IQR-based anomaly helpers.
 - **db.py** — Thin connection wrapper around `psycopg2`. Reads `DATABASE_URL` from `.env`. Also provides `table_exists()` helper via `information_schema`.
@@ -51,13 +57,19 @@ This project is intentionally small, but structured like production code.
 
 ```
 profile_state.py    ← Profile readiness checks (table existence + row counts)
-app.py              ← Streamlit orchestrator (entry point, profile selector)
-dashboard_order.py  ← Order-profile dashboard (4 tabs)
-dashboard_flat_metric.py ← Flat-metric dashboard (3 tabs)
+app.py              ← Streamlit orchestrator (entry point, profile + page routing)
+nav_state.py        ← Session-state navigation (page enums, set/get page, back button)
+dashboard_order.py  ← Order-profile summary dashboard (4 tabs)
+dashboard_flat_metric.py ← Flat-metric summary dashboard (3 tabs)
+page_fm_entity.py   ← Flat Metric Entity Detail deep-dive
+page_fm_metric.py   ← Flat Metric Metric Explorer deep-dive
+page_order_customer.py ← Order Customer Detail deep-dive
+page_order_product.py  ← Order Product Detail deep-dive
+page_order_anomaly.py  ← Order Anomaly Explorer deep-dive
 formatters.py       ← Display helpers (currency, rank, %)
 db.py               ← Database connection helper
-queries.py          ← Order-profile query functions + anomaly helpers
-flat_metric_queries.py ← Flat-metric query functions + filter builder
+queries.py          ← Order-profile query functions + customer/product detail + anomaly helpers
+flat_metric_queries.py ← Flat-metric query functions + entity/metric detail + filter builder
 canonical_model.py  ← Order entity/column specs (the import contract)
 flat_metric_model.py← Flat-metric entity spec
 dataset_profile.py  ← ProfileType, ImportResult, profile value types

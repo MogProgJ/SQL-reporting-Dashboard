@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added (Phase 4 — Multi-Page Expansion)
+- `nav_state.py` — Lightweight session-state navigation with per-profile page enums (`OrderPage`, `FlatMetricPage`), `set_page()` / `get_page()` / `go_back()`, sidebar selectbox, and back-to-summary button
+- `page_fm_entity.py` — Flat Metric Entity Detail deep-dive: summary KPIs, time trend (metric selector), metric comparison bar chart, full data export
+- `page_fm_metric.py` — Flat Metric Metric Explorer deep-dive: top/bottom entity rankings, average trend, IQR-based outlier detection, full data export
+- `page_order_customer.py` — Order Customer Detail deep-dive: revenue/volume trends, product mix chart + table, full order-item table with export
+- `page_order_product.py` — Order Product Detail deep-dive: revenue/units trends, top customers chart + table, full order-item table with export
+- `page_order_anomaly.py` — Order Anomaly Explorer deep-dive: IQR-flagged large orders, high-revenue days with Q₁/Q₃/threshold display, raw data export
+- 8 new order-profile query functions in `queries.py`: `get_customer_summary`, `get_customer_trend`, `get_customer_products`, `get_customer_orders`, `get_product_summary`, `get_product_trend`, `get_product_customers`, `get_product_orders`
+- 10 new flat-metric query functions in `flat_metric_queries.py`: entity detail (summary, metrics, trend, comparison) + metric explorer (summary, top/bottom entities, trend avg, detail, outliers)
+- Navigation hooks in `dashboard_order.py` — "Inspect customer" / "Inspect product" selectboxes in Overview tab top lists
+- Navigation hooks in `dashboard_flat_metric.py` — "Explore entity" / "Explore metric" controls in Rankings tab
+- Page-aware routing in `app.py` — dispatches to summary or deep-dive page based on `nav_state.get_page()`
+- Natural key duplicate detection in `validators.py` — warns on duplicate (entity, metric_name, year) rows
+- 13 new unit tests + 17 integration tests in `tests/test_phase4.py` (133 total unit passes, 0 failures)
+
+### Fixed (Phase 4)
+- `flat_metric_model.py` — natural key corrected from `("entity", "metric_name")` to `("entity", "metric_name", "year")` (seed data has 3 rows per entity+metric, one per year)
+
 ### Added (Phase 3C Closeout — Multi-Profile Hardening)
 - `profile_state.py` — `ReadinessStatus` enum, `ProfileReadiness` dataclass, `check_order_readiness()` / `check_flat_metric_readiness()`
 - `db.table_exists()` — safe check via `information_schema.tables`

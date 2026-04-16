@@ -21,6 +21,7 @@ from flat_metric_queries import (
     get_fm_trend,
     get_fm_year_range,
 )
+from nav_state import FlatMetricPage, set_page
 
 
 # ── Helpers ─────────────────────────────────────────────────────
@@ -197,6 +198,21 @@ def _render_rankings(primary_metric: str, filters: dict) -> None:
         hide_index=True,
     )
     st.caption(f"Entities ranked by {primary_metric} (descending).")
+
+    # Navigation hooks
+    col_a, col_b = st.columns(2)
+    with col_a:
+        entities_list = ranking["entity"].tolist()
+        entity_pick = st.selectbox(
+            "Explore entity in detail",
+            [""] + entities_list,
+            key="fm_rank_entity_pick",
+        )
+        if entity_pick:
+            set_page(FlatMetricPage.ENTITY_DETAIL.value, target=entity_pick)
+    with col_b:
+        if st.button(f"Explore {primary_metric} across all entities", key="fm_rank_metric_btn"):
+            set_page(FlatMetricPage.METRIC_EXPLORER.value, target=primary_metric)
 
 
 def _render_trends(primary_metric: str, filters: dict) -> None:

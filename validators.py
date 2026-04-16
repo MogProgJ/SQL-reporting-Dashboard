@@ -113,6 +113,25 @@ def _validate_entity(spec: EntitySpec, df: pd.DataFrame) -> list[ValidationIssue
                 _check_positive(spec.name, col_name, df[col_name])
             )
 
+    # Natural-key duplicate check
+    if spec.natural_key:
+        key_cols = [k for k in spec.natural_key if k in actual]
+        if len(key_cols) == len(spec.natural_key):
+            # Drop rows where any key column is null before checking
+            key_df = df[key_cols].dropna()
+            dupes = key_df.duplicated()
+            if dupes.any():
+                n = int(dupes.sum())
+                key_str = ", ".join(key_cols)
+                issues.append(
+                    ValidationIssue(
+                        entity=spec.name,
+                        column=key_str,
+                        message=f"{n} duplicate row(s) on natural key ({key_str}).",
+                        severity="warning",
+                    )
+                )
+
     return issues
 
 
