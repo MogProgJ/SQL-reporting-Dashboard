@@ -20,6 +20,7 @@ from flat_metric_queries import (
     get_fm_ranking,
     get_fm_trend,
     get_fm_year_range,
+    resolve_snapshot_year,
 )
 from nav_state import FlatMetricPage, set_page
 
@@ -122,7 +123,7 @@ def render(filters: dict) -> None:
         st.stop()
 
     k = kpi.iloc[0]
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total Rows", fmt_number(k["total_rows"]))
     c2.metric("Unique Entities", fmt_number(k["unique_entities"]))
     c3.metric("Metrics Tracked", fmt_number(k["metric_count"]))
@@ -130,6 +131,14 @@ def render(filters: dict) -> None:
         c4.metric("Year Span", f"{int(k['min_year'])}–{int(k['max_year'])}")
     else:
         c4.metric("Year Span", "—")
+
+    # ── Snapshot year ───────────────────────────────────────
+    snapshot_year = resolve_snapshot_year(
+        year_from=query_filters.get("year_from"),
+        year_to=query_filters.get("year_to"),
+    )
+    snap_label = str(snapshot_year) if snapshot_year else "—"
+    c5.metric("Snapshot Year", snap_label)
 
     st.markdown("")
 
@@ -139,7 +148,7 @@ def render(filters: dict) -> None:
     )
 
     with tab_rank:
-        _render_rankings(primary_metric, query_filters)
+        _render_rankings(primary_metric, query_filters, snapshot_year)
 
     with tab_trend:
         _render_trends(primary_metric, query_filters)
@@ -150,10 +159,11 @@ def render(filters: dict) -> None:
 
 # ── Tab renderers ───────────────────────────────────────────────
 
-def _render_rankings(primary_metric: str, filters: dict) -> None:
-    st.subheader(f"Rankings — {primary_metric}")
+def _render_rankings(primary_metric: str, filters: dict, snapshot_year: int | None) -> None:
+    year_label = str(snapshot_year) if snapshot_year else "latest year"
+    st.subheader(f"Rankings — {primary_metric} ({year_label})")
 
-    ranking = get_fm_ranking(primary_metric, limit=25, **filters)
+    ranking = get_fm_ranking(primary_metric, limit=25, snapshot_year=snapshot_year, **filters)
     if ranking.empty:
         _empty_state(f"No data for metric '{primary_metric}'.")
         return
@@ -197,7 +207,7 @@ def _render_rankings(primary_metric: str, filters: dict) -> None:
         use_container_width=True,
         hide_index=True,
     )
-    st.caption(f"Entities ranked by {primary_metric} (descending).")
+    st.caption(f"One row per entity — snapshot for {year_label}, ranked by {primary_metric} (descending).")
 
     # Navigation hooks
     col_a, col_b = st.columns(2)
@@ -242,10 +252,15 @@ def _render_trends(primary_metric: str, filters: dict) -> None:
     st.plotly_chart(fig, use_container_width=True, theme="streamlit")
     st.caption(f"{primary_metric} over time for each entity.")
 
-    # Comparison table (latest year)
-    comparison = get_fm_comparison(primary_metric, **filters)
+    # Comparison snapshot (latest year per entity)
+    snapshot_year = resolve_snapshot_year(
+        year_from=filters.get("year_from"),
+        year_to=filters.get("year_to"),
+    )
+    comparison = get_fm_comparison(primary_metric, snapshot_year=snapshot_year, **filters)
     if not comparison.empty:
-        st.subheader("Entity Comparison")
+        snap_label = str(snapshot_year) if snapshot_year else "latest year"
+        st.subheader(f"Entity Comparison — {primary_metric} ({snap_label})")
         comp_tbl = add_rank(comparison.copy())
         st.dataframe(
             comp_tbl[["#", "entity", "metric_value", "year"]],
@@ -260,6 +275,7 @@ def _render_trends(primary_metric: str, filters: dict) -> None:
             use_container_width=True,
             hide_index=True,
         )
+        st.caption(f"One row per entity — snapshot for {snap_label}.")
 
 
 def _render_detail(filters: dict) -> None:

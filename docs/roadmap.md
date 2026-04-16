@@ -100,11 +100,34 @@ promises.
 - 18 new tests (120 total, 0 unit failures)
 - ADR 009: profile readiness + stale-schema recovery
 
-## Phase 4 — Multi-Page Expansion (planned)
+## Phase 4 — Multi-Page Expansion ✅
 
-- Separate Streamlit pages for deep-dive views (customer detail, product
-  detail, anomaly explorer)
-- Navigation between summary and detail pages
+- `nav_state.py` — lightweight page-navigation state (enums, set/get, back)
+- 5 deep-dive pages: Customer Detail, Product Detail, Anomaly Explorer,
+  Entity Detail, Metric Explorer
+- 18 new query functions across `queries.py` and `flat_metric_queries.py`
+- Navigation hooks in summary dashboards (selectbox → deep-dive pages)
+- Back-to-summary button on all deep-dive pages
+- `app.py` routing dispatches by profile + page
+- 133 total tests, 0 failures
+
+## Phase 4 Closeout — Semantic Hardening + Exploration Polish ✅
+
+- **Snapshot semantics** for flat-metric rankings: `get_fm_ranking()` and
+  `get_fm_comparison()` now enforce one row per entity via `DISTINCT ON`
+  (latest year) or explicit `snapshot_year` parameter
+- `resolve_snapshot_year()` helper: pinned year when sidebar slider is at a
+  single value, otherwise latest available year
+- **Explicit year context** throughout the FM dashboard: "Snapshot Year" KPI
+  card, year labels on ranking/comparison subheaders and captions
+- **Cross-profile nav safety**: `get_page()` validates page values against the
+  active profile's enum; stale values from the other profile are silently
+  reset to Summary
+- **Cross-page navigation**: Entity Detail → Metric Explorer selectbox,
+  Metric Explorer → Entity Detail selectbox
+- Snapshot context captions on Metric Explorer rankings (top/bottom)
+- New tests: `resolve_snapshot_year()` unit tests, cross-profile page
+  validation, snapshot ranking/comparison integration tests
 
 ## Phase 5 — Forecasting & Advanced Analytics (planned)
 

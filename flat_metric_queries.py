@@ -36,6 +36,25 @@ def get_fm_year_range() -> tuple[int, int] | None:
     return int(df.iloc[0]["mn"]), int(df.iloc[0]["mx"])
 
 
+def resolve_snapshot_year(
+    year_from: int | None = None,
+    year_to: int | None = None,
+) -> int | None:
+    """Determine the single year to use for snapshot views.
+
+    Rules:
+    - If year_from == year_to (user pinned a single year), use that.
+    - Otherwise, return the latest available year in the database.
+    - Returns None only if no year data exists at all.
+    """
+    if year_from is not None and year_to is not None and year_from == year_to:
+        return year_from
+    yr = get_fm_year_range()
+    if yr is None:
+        return None
+    return yr[1]  # latest year
+
+
 # ── WHERE-clause builder ────────────────────────────────────────
 
 def _build_fm_filters(
@@ -91,37 +110,65 @@ def get_fm_kpis(**filters) -> pd.DataFrame:
 def get_fm_ranking(
     metric_name: str,
     limit: int = 10,
+    snapshot_year: int | None = None,
     **filters,
 ) -> pd.DataFrame:
-    """Entities ranked by metric_value for a specific metric (descending)."""
+    """Entities ranked by metric_value for a specific metric (descending).
+
+    When *snapshot_year* is provided, returns exactly one row per entity
+    for that year.  When it is ``None``, the latest available year per
+    entity is used (``DISTINCT ON``).
+    """
     where, params = _build_fm_filters(**filters)
-    # Add metric_name filter
     if where:
         where += " AND metric_name = %s"
     else:
         where = "WHERE metric_name = %s"
     params.append(metric_name)
 
-    sql = f"""
-    SELECT
-      entity,
-      metric_value,
-      year,
-      score,
-      rank
-    FROM flat_metrics
-    {where}
-    ORDER BY metric_value DESC
-    LIMIT %s;
-    """
-    params.append(limit)
+    if snapshot_year is not None:
+        where += " AND year = %s"
+        params.append(snapshot_year)
+        sql = f"""
+        SELECT entity, metric_value, year, score, rank
+        FROM flat_metrics
+        {where}
+        ORDER BY metric_value DESC
+        LIMIT %s;
+        """
+        params.append(limit)
+    else:
+        # Latest year per entity, then sort by value
+        sql = f"""
+        SELECT entity, metric_value, year, score, rank
+        FROM (
+            SELECT DISTINCT ON (entity)
+                   entity, metric_value, year, score, rank
+            FROM flat_metrics
+            {where}
+              AND year IS NOT NULL
+            ORDER BY entity, year DESC
+        ) sub
+        ORDER BY metric_value DESC
+        LIMIT %s;
+        """
+        params.append(limit)
+
     return run_query(sql, tuple(params))
 
 
 # ── Comparison bar chart ────────────────────────────────────────
 
-def get_fm_comparison(metric_name: str, **filters) -> pd.DataFrame:
-    """All entities for one metric, sorted by value (for bar charts)."""
+def get_fm_comparison(
+    metric_name: str,
+    snapshot_year: int | None = None,
+    **filters,
+) -> pd.DataFrame:
+    """All entities for one metric, one row per entity, sorted by value.
+
+    When *snapshot_year* is set, only that year's data is returned.
+    Otherwise the latest year per entity is used (``DISTINCT ON``).
+    """
     where, params = _build_fm_filters(**filters)
     if where:
         where += " AND metric_name = %s"
@@ -129,15 +176,29 @@ def get_fm_comparison(metric_name: str, **filters) -> pd.DataFrame:
         where = "WHERE metric_name = %s"
     params.append(metric_name)
 
-    sql = f"""
-    SELECT
-      entity,
-      metric_value,
-      year
-    FROM flat_metrics
-    {where}
-    ORDER BY metric_value DESC;
-    """
+    if snapshot_year is not None:
+        where += " AND year = %s"
+        params.append(snapshot_year)
+        sql = f"""
+        SELECT entity, metric_value, year
+        FROM flat_metrics
+        {where}
+        ORDER BY metric_value DESC;
+        """
+    else:
+        sql = f"""
+        SELECT entity, metric_value, year
+        FROM (
+            SELECT DISTINCT ON (entity)
+                   entity, metric_value, year
+            FROM flat_metrics
+            {where}
+              AND year IS NOT NULL
+            ORDER BY entity, year DESC
+        ) sub
+        ORDER BY metric_value DESC;
+        """
+
     return run_query(sql, tuple(params))
 
 

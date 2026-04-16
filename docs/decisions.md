@@ -202,3 +202,29 @@ Five new page modules were created:
 - `flat_metric_queries.py` gained 10 new functions for entity/metric deep dives.
 - Adding a new deep-dive page requires: one page module, one enum value, and a
   routing clause in `app.py` — no framework overhead.
+
+## ADR 011: Snapshot semantics for flat-metric rankings (Phase 4 Closeout)
+
+**Context:** `get_fm_ranking()` and `get_fm_comparison()` returned raw rows from
+`flat_metrics` without deduplication. When the year slider spanned multiple years,
+the same entity could appear multiple times in a ranking (once per year), making
+the table analytically meaningless. By contrast, the Metric Explorer's
+`get_fm_metric_top_entities()` already used `DISTINCT ON (entity)`.
+
+**Decision:** Enforce snapshot semantics on rankings and comparison:
+- Both functions accept an optional `snapshot_year` parameter.
+- When `snapshot_year` is set, only that year's data is returned (one row per entity).
+- When it is `None`, a `DISTINCT ON (entity) ... ORDER BY entity, year DESC`
+  subquery picks the latest available year per entity, then sorts by value.
+- `resolve_snapshot_year()` determines the year: if the sidebar slider is pinned
+  to a single value (`year_from == year_to`), use that; otherwise, use the latest
+  year in the database.
+- `get_page()` in `nav_state.py` now validates the stored page against the active
+  profile's enum and resets to Summary if stale.
+
+**Consequences:**
+- Rankings always show one row per entity — no duplicates.
+- Year context is explicit: subheaders, captions, and a "Snapshot Year" KPI card
+  tell the user exactly which year the ranking represents.
+- Trend views remain unchanged — they intentionally show all years.
+- Cross-profile navigation is safe: switching profiles clears stale page state.

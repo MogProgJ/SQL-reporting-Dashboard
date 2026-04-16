@@ -192,6 +192,16 @@ def _render_comparison(entity: str, summary_row) -> None:
         col_cfg["rank"] = st.column_config.NumberColumn("Rank", format="%d")
 
     st.dataframe(comp[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
+    st.caption(f"Showing one value per metric — {'year ' + str(year) if year else 'latest available year per metric'}.")
+
+    # Navigation to Metric Explorer
+    metric_pick = st.selectbox(
+        "Explore a metric across all entities",
+        [""] + comp["metric_name"].tolist(),
+        key="fm_entity_to_metric",
+    )
+    if metric_pick:
+        set_page(FlatMetricPage.METRIC_EXPLORER.value, target=metric_pick)
 
 
 def _render_detail(entity: str) -> None:

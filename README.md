@@ -153,6 +153,8 @@ Integration tests require a running seeded Postgres instance
 - [x] Import UX hardening (friendly errors, templates, dependency handling)
 - [x] Multi-profile analytics (Order Reporting + Flat Metric)
 - [x] Profile readiness guards (safe startup with missing tables)
+- [x] Multi-page deep-dive views (customer, product, anomaly, entity, metric)
+- [x] Snapshot ranking semantics (one entity per row, explicit year context)
 - [ ] Role-based views or saved filter presets
 - [ ] Scheduled PDF/email reports
 

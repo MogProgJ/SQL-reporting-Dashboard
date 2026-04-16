@@ -21,7 +21,7 @@ from flat_metric_queries import (
     get_fm_metric_trend_avg,
     get_fm_year_range,
 )
-from nav_state import get_target, render_back_button
+from nav_state import get_target, render_back_button, set_page, FlatMetricPage
 
 
 def _find_outliers(df: pd.DataFrame, col: str = "metric_value") -> pd.DataFrame:
@@ -121,7 +121,8 @@ def render() -> None:
 
 def _render_rankings(metric_name: str, year: int | None) -> None:
     """Top and bottom entities for this metric."""
-    st.subheader("Top Entities")
+    year_label = str(year) if year else "latest year per entity"
+    st.subheader(f"Top Entities ({year_label})")
     top = get_fm_metric_top_entities(metric_name, limit=10, year=year)
     if not top.empty:
         tbl = add_rank(top.copy())
@@ -151,12 +152,22 @@ def _render_rankings(metric_name: str, year: int | None) -> None:
             show_cols.append("year")
             col_cfg["year"] = st.column_config.NumberColumn("Year", format="%d")
         st.dataframe(tbl[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
+        st.caption(f"One row per entity — {year_label}.")
+
+        # Navigation to Entity Detail
+        entity_pick = st.selectbox(
+            "Explore entity in detail",
+            [""] + top["entity"].tolist(),
+            key="fm_metric_to_entity",
+        )
+        if entity_pick:
+            set_page(FlatMetricPage.ENTITY_DETAIL.value, target=entity_pick)
     else:
         st.info("No data for top entities.")
 
     st.divider()
 
-    st.subheader("Bottom Entities")
+    st.subheader(f"Bottom Entities ({year_label})")
     bottom = get_fm_metric_bottom_entities(metric_name, limit=10, year=year)
     if not bottom.empty:
         tbl_b = add_rank(bottom.copy())
@@ -170,6 +181,7 @@ def _render_rankings(metric_name: str, year: int | None) -> None:
             show_cols.append("year")
             col_cfg["year"] = st.column_config.NumberColumn("Year", format="%d")
         st.dataframe(tbl_b[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
+        st.caption(f"One row per entity — {year_label}.")
     else:
         st.info("No data for bottom entities.")
 

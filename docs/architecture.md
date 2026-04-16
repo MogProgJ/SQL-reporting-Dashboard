@@ -32,7 +32,7 @@ This project is intentionally small, but structured like production code.
 - **app.py** — Thin orchestrator (~330 lines). Sidebar has profile selector (Order Reporting / Flat Metric), page navigation, per-profile Data Source section, and per-profile filters. Runs readiness check before rendering; routes to summary dashboards or deep-dive pages based on nav state. Shows clean recovery guidance when tables are missing or empty. Delegates rendering to `dashboard_order.py`, `dashboard_flat_metric.py`, or the five `page_*` modules.
 - **dashboard_order.py** — Order-profile summary dashboard: 4 tabs (Overview, Breakdown, Outliers, Detail & Export). Plotly charts, `st.column_config` formatting. Includes navigation hooks to drill into customer/product detail.
 - **dashboard_flat_metric.py** — Flat-metric summary dashboard: 3 tabs (Rankings, Trends, Detail & Export). Horizontal bar chart, line chart, ranking table. Includes navigation hooks to drill into entity/metric detail.
-- **nav_state.py** — Lightweight session-state navigation. Per-profile page enums (`OrderPage`, `FlatMetricPage`), page/target state in `st.session_state`, sidebar selectbox, back button.
+- **nav_state.py** — Lightweight session-state navigation. Per-profile page enums (`OrderPage`, `FlatMetricPage`), page/target state in `st.session_state`, sidebar selectbox, back button. `get_page()` validates against the active profile's enum to prevent stale cross-profile page values.
 - **page_fm_entity.py** — Flat Metric Entity Detail deep-dive: KPIs, time trend (metric selector), metric comparison bar chart, full data export.
 - **page_fm_metric.py** — Flat Metric Metric Explorer deep-dive: top/bottom entity rankings, average trend over time, IQR outlier detection, full data export.
 - **page_order_customer.py** — Order Customer Detail deep-dive: revenue and volume trends, product mix, full order-item table with export.
@@ -43,7 +43,7 @@ This project is intentionally small, but structured like production code.
 - **db.py** — Thin connection wrapper around `psycopg2`. Reads `DATABASE_URL` from `.env`. Also provides `table_exists()` helper via `information_schema`.
 - **canonical_model.py** — Defines the five canonical order-profile entities (columns, types, natural keys).
 - **flat_metric_model.py** — Defines the flat-metric entity (entity, metric_name, metric_value, year, score, rank). Supports "float" dtype.
-- **flat_metric_queries.py** — SQL queries for the flat-metric dashboard — KPIs, rankings, comparison, trend, detail with parameterised filter builder.
+- **flat_metric_queries.py** — SQL queries for the flat-metric dashboard — KPIs, rankings, comparison, trend, detail with parameterised filter builder. Rankings and comparison use snapshot semantics: one row per entity via `DISTINCT ON` (latest year) or an explicit `snapshot_year` parameter. `resolve_snapshot_year()` determines the year to use based on filter state.
 - **importer.py** — High-level orchestrator: `import_csv_bundle()` / `import_excel_workbook()`. Calls readers → validators → normalizers → loader.
 - **readers.py** — `read_csv_bundle(files)` and `read_excel_workbook(buf)` return `dict[str, DataFrame]`.
 - **validators.py** — Schema checks, null/type/positive-value checks, cross-entity referential integrity.

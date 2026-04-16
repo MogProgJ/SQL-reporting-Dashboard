@@ -36,9 +36,19 @@ _TARGET_KEY = "nav_target"  # e.g. a customer name or entity name
 
 
 def get_page(is_order: bool) -> str:
-    """Return the current page name for the active profile."""
+    """Return the current page name for the active profile.
+
+    If the stored page belongs to a different profile it is treated as
+    Summary so that stale state from the other profile is ignored.
+    """
     default = OrderPage.SUMMARY.value if is_order else FlatMetricPage.SUMMARY.value
-    return st.session_state.get(_PAGE_KEY, default)
+    valid = {p.value for p in (OrderPage if is_order else FlatMetricPage)}
+    current = st.session_state.get(_PAGE_KEY, default)
+    if current not in valid:
+        st.session_state[_PAGE_KEY] = default
+        st.session_state[_TARGET_KEY] = None
+        return default
+    return current
 
 
 def set_page(page: str, target: str | None = None) -> None:

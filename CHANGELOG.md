@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added (Phase 4 Closeout — Semantic Hardening + Exploration Polish)
+- `resolve_snapshot_year()` in `flat_metric_queries.py` — determines single snapshot year from filter state (pinned year or latest available)
+- Snapshot semantics for `get_fm_ranking()` and `get_fm_comparison()` — one row per entity via `DISTINCT ON` or explicit `snapshot_year` parameter
+- "Snapshot Year" KPI card in flat-metric summary dashboard
+- Year context labels on ranking/comparison subheaders and captions throughout FM pages
+- Cross-profile page validation in `nav_state.get_page()` — resets stale page values when switching profiles
+- Cross-page navigation: Entity Detail → Metric Explorer selectbox, Metric Explorer → Entity Detail selectbox
+- Snapshot context captions on Metric Explorer top/bottom rankings
+- New tests in `tests/test_phase4_closeout.py`: `resolve_snapshot_year()` unit tests, cross-profile page validation, snapshot ranking/comparison integration tests
+
+### Fixed (Phase 4 Closeout)
+- Flat-metric rankings no longer show duplicate entities when year range spans multiple years
+- Flat-metric comparison table now enforces one row per entity (snapshot semantics)
+- `nav_state.get_page()` no longer returns stale page values from the other profile
+
 ### Added (Phase 4 — Multi-Page Expansion)
 - `nav_state.py` — Lightweight session-state navigation with per-profile page enums (`OrderPage`, `FlatMetricPage`), `set_page()` / `get_page()` / `go_back()`, sidebar selectbox, and back-to-summary button
 - `page_fm_entity.py` — Flat Metric Entity Detail deep-dive: summary KPIs, time trend (metric selector), metric comparison bar chart, full data export
