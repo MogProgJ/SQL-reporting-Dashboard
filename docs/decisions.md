@@ -228,3 +228,31 @@ the table analytically meaningless. By contrast, the Metric Explorer's
   tell the user exactly which year the ranking represents.
 - Trend views remain unchanged — they intentionally show all years.
 - Cross-profile navigation is safe: switching profiles clears stale page state.
+
+## ADR 012: Dockerized app + CI with Postgres service (Phase 5A)
+
+**Context:** The project had no way to run the app in a container and no
+integration test coverage in CI. All 23 integration tests were silently skipped
+because `DATABASE_URL` was never set. The requirements file mixed runtime and
+dev dependencies with no version pins.
+
+**Decision:**
+1. Add a `Dockerfile` (Python 3.11-slim, Streamlit on port 8501) and
+   `.dockerignore`. The app service is added to `docker-compose.yml` under
+   the `app` profile so `docker compose up -d` still starts only the DB.
+2. Split CI into two jobs: **lint** (compile check + unit tests, no DB) and
+   **integration** (Postgres service container, seed, integration tests).
+   Use a proper `pytest.mark.integration` marker via `conftest.py` instead of
+   ad-hoc `skipif` decorators.
+3. Pin runtime dependency ranges in `requirements.txt` and extract `pytest`
+   into `requirements-dev.txt`.
+4. Add helper scripts: `dev-reseed.ps1`, `dev-test.ps1`, `smoke_test.py`.
+5. Remove duplicate function definitions in `queries.py` (8 functions were
+   defined twice — the second set silently shadowed the first).
+
+**Consequences:**
+- `docker compose --profile app up --build` runs the full stack.
+- CI now actually exercises integration tests against a real Postgres instance.
+- Unit and integration tests are cleanly separated by marker.
+- `queries.py` dropped from ~607 to ~460 lines with no behaviour change.
+- Dev dependencies are isolated; runtime containers stay lean.

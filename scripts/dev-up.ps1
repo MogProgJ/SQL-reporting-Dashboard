@@ -53,7 +53,7 @@ try {
   if (-not $SkipInstall) {
     Write-Step "Installing dependencies"
     & $VenvPython -m pip install --quiet --upgrade pip
-    & $VenvPython -m pip install --quiet -r requirements.txt
+    & $VenvPython -m pip install --quiet -r requirements.txt -r requirements-dev.txt
     if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
     Write-Host "  Dependencies OK"
   }

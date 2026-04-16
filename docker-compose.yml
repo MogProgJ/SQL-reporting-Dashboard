@@ -16,5 +16,17 @@ services:
       timeout: 3s
       retries: 20
 
+  app:
+    build: .
+    container_name: reporting_app
+    profiles: ["app"]
+    ports:
+      - "8501:8501"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/reporting
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   reporting_db_data:

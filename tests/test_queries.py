@@ -217,13 +217,8 @@ class TestAnomalyHelpers:
 
 # ── Integration tests (require running DB) ───────────────────────
 
-integration = pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL not set — skipping integration tests",
-)
 
-
-@integration
+@pytest.mark.integration
 class TestIntegrationQueries:
     """Run real queries against the seeded database."""
 

@@ -78,14 +78,22 @@ readers.py          ← CSV bundle + Excel workbook + flat-metric readers
 validators.py       ← Schema + referential validation (parameterised)
 normalizers.py      ← Type coercion (Int64, float64, dates, text)
 loader.py           ← Atomic TRUNCATE + reload into Postgres (both profiles)
-requirements.txt
-docker-compose.yml
+requirements.txt        ← Runtime dependencies (pinned ranges)
+requirements-dev.txt    ← Dev/test dependencies
+Dockerfile              ← App container image (Python 3.11-slim, Streamlit)
+.dockerignore           ← Docker build exclusions
+docker-compose.yml      ← DB + optional app service (--profile app)
 .env.example
 scripts/
   dev-up.ps1        ← One-command local bootstrap (PowerShell)
+  dev-reseed.ps1    ← Re-seed the database
+  dev-test.ps1      ← Run unit / integration / all tests
+  smoke_test.py     ← Verify DB connectivity + profile readiness
 seed/seed.sql       ← Schema + demo data
 sql/kpis.sql        ← Reference queries
-tests/              ← Unit + integration test suites
+tests/
+  conftest.py       ← Shared pytest config + integration marker
+  test_*.py         ← Unit + integration test suites
 docs/
   vision.md
   roadmap.md
@@ -94,3 +102,29 @@ docs/
   architecture.md
   decisions.md
 ```
+
+## Packaging & deployment
+
+```
+┌─────────────────────────────────────────────────┐
+│  docker compose --profile app up --build        │
+│  ┌──────────────┐   ┌────────────────────────┐  │
+│  │  db           │   │  app                   │  │
+│  │  postgres:16  │◄──│  python:3.11-slim      │  │
+│  │  port 5434    │   │  streamlit on :8501    │  │
+│  └──────────────┘   └────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+```
+
+- `docker compose up -d` — DB only (local Python dev).
+- `docker compose --profile app up --build` — DB + app.
+- The `app` service uses the `app` profile so it won't start by default.
+
+## CI
+
+GitHub Actions runs two jobs:
+
+1. **lint** — compile check + unit tests (no DB)
+2. **integration** — Postgres service container, seed, integration tests
+
+See `.github/workflows/ci.yml`.

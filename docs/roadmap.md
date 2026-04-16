@@ -129,7 +129,19 @@ promises.
 - New tests: `resolve_snapshot_year()` unit tests, cross-profile page
   validation, snapshot ranking/comparison integration tests
 
-## Phase 5 — Forecasting & Advanced Analytics (planned)
+## Phase 5A — Productionization & Delivery ✅
+
+- Dockerfile (Python 3.11-slim, Streamlit on port 8501, healthcheck)
+- `.dockerignore` for lean images
+- `docker-compose.yml` app service (opt-in via `--profile app`)
+- CI split into lint (unit tests) + integration (Postgres service, seed, real DB tests)
+- `tests/conftest.py` with proper `pytest.mark.integration` marker
+- Pinned dependency ranges in `requirements.txt`; `requirements-dev.txt` for pytest
+- Helper scripts: `dev-reseed.ps1`, `dev-test.ps1`, `smoke_test.py`
+- Duplicate function cleanup in `queries.py` (8 functions defined twice)
+- ADR 012
+
+## Phase 5B — Forecasting & Advanced Analytics (planned)
 
 - Simple trend extrapolation (moving averages, linear projection)
 - Seasonality detection if data supports it
@@ -137,7 +149,5 @@ promises.
 
 ## Phase 6 — Deployment & Polish (planned)
 
-- Dockerfile for the Streamlit app
-- CI pipeline (lint, test, build)
 - Optional cloud deployment guide (Railway, Render, etc.)
 - Performance profiling for larger datasets

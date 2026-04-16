@@ -7,7 +7,6 @@ Covers:
 - Order deep-dive queries — integration tests
 """
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -149,13 +148,8 @@ class TestFmOutlierDetection:
 
 # ── Integration tests (require running DB) ───────────────────────
 
-integration = pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL not set — skipping integration tests",
-)
 
-
-@integration
+@pytest.mark.integration
 class TestFlatMetricDeepDiveQueries:
     """Integration tests for flat metric entity + metric explorer queries."""
 
@@ -214,7 +208,7 @@ class TestFlatMetricDeepDiveQueries:
         assert "entity" in result.columns
 
 
-@integration
+@pytest.mark.integration
 class TestOrderDeepDiveQueries:
     """Integration tests for order customer + product detail queries."""
 

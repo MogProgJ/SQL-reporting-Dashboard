@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Added (Phase 5A — Productionization & Delivery)
+- `Dockerfile` — Python 3.11-slim app container with Streamlit on port 8501, healthcheck
+- `.dockerignore` — excludes tests, docs, scripts, .venv from image
+- `app` service in `docker-compose.yml` — opt-in via `--profile app`, depends on healthy DB
+- CI upgraded to two jobs: **lint** (unit tests, no DB) and **integration** (Postgres service, seed, integration tests)
+- `tests/conftest.py` — shared `pytest.mark.integration` marker with auto-skip when `DATABASE_URL` absent
+- `requirements-dev.txt` — dev/test dependencies separated from runtime
+- `scripts/dev-reseed.ps1` — re-seed the database
+- `scripts/dev-test.ps1` — run unit / integration / all tests with flags
+- `scripts/smoke_test.py` — verify DB connectivity + profile readiness
+- ADR 012 in `docs/decisions.md`
+
+### Changed (Phase 5A)
+- `requirements.txt` — pinned dependency ranges, removed `pytest` (now in `requirements-dev.txt`)
+- `.github/workflows/ci.yml` — split into lint + integration jobs; integration tests now actually run against Postgres
+- `scripts/dev-up.ps1` — installs both `requirements.txt` and `requirements-dev.txt`
+- `.vscode/tasks.json` — Python: Install task includes dev deps
+
+### Fixed (Phase 5A)
+- Removed 8 duplicate function definitions in `queries.py` (customer + product detail queries were defined twice; second set shadowed the first)
+- Integration tests now use proper `pytest.mark.integration` marker instead of ad-hoc `skipif` decorators
+
 ### Added (Phase 4 Closeout — Semantic Hardening + Exploration Polish)
 - `resolve_snapshot_year()` in `flat_metric_queries.py` — determines single snapshot year from filter state (pinned year or latest available)
 - Snapshot semantics for `get_fm_ranking()` and `get_fm_comparison()` — one row per entity via `DISTINCT ON` or explicit `snapshot_year` parameter
