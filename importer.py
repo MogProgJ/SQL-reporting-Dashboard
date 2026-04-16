@@ -95,22 +95,35 @@ def get_demo_profile() -> DatasetProfile:
 
 
 def get_current_row_counts() -> dict[str, int]:
-    """Query current row counts from the order reporting tables."""
-    from db import fetch_scalar
+    """Query current row counts from the order reporting tables.
+
+    Returns zero for tables that do not exist yet (safe for partially
+    initialised databases).
+    """
+    from db import fetch_scalar, table_exists
 
     counts: dict[str, int] = {}
     for table in ("customers", "categories", "products", "orders", "order_items"):
-        val = fetch_scalar(f"SELECT COUNT(*) FROM {table};")  # noqa: S608
-        counts[table] = int(val) if val else 0
+        if table_exists(table):
+            val = fetch_scalar(f"SELECT COUNT(*) FROM {table};")  # noqa: S608
+            counts[table] = int(val) if val else 0
+        else:
+            counts[table] = 0
     return counts
 
 
 def get_flat_metric_row_counts() -> dict[str, int]:
-    """Query current row counts from the flat_metrics table."""
-    from db import fetch_scalar
+    """Query current row counts from the flat_metrics table.
 
-    val = fetch_scalar("SELECT COUNT(*) FROM flat_metrics;")
-    return {"flat_metrics": int(val) if val else 0}
+    Returns zero if the table does not exist yet (safe for partially
+    initialised databases).
+    """
+    from db import fetch_scalar, table_exists
+
+    if table_exists("flat_metrics"):
+        val = fetch_scalar("SELECT COUNT(*) FROM flat_metrics;")
+        return {"flat_metrics": int(val) if val else 0}
+    return {"flat_metrics": 0}
 
 
 # ── Internal ────────────────────────────────────────────────────

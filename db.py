@@ -35,3 +35,15 @@ def fetch_scalar(sql: str, params: tuple | None = None):
             cur.execute(sql, params)
             row = cur.fetchone()
             return row[0] if row else None
+
+
+def table_exists(table_name: str) -> bool:
+    """Return True if *table_name* exists in the public schema."""
+    val = fetch_scalar(
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM information_schema.tables"
+        "  WHERE table_schema = 'public' AND table_name = %s"
+        ");",
+        (table_name,),
+    )
+    return bool(val)

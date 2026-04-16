@@ -57,8 +57,9 @@ def render_filters() -> tuple[dict, int]:
         min_date, max_date = get_date_range()
     except Exception:
         st.error(
-            "**Order tables appear empty.**  \n"
-            "Run `docker compose up -d` and seed the database — see the README."
+            "**Could not load order data.**  \n"
+            "The order tables may be missing or empty.  \n"
+            "Reseed the database — see the README."
         )
         st.stop()
 

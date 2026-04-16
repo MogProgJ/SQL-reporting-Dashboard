@@ -141,3 +141,32 @@ orchestrator with a sidebar profile selector that routes to the correct module.
 - Nullable columns may be absent from import files without triggering errors.
 - `scripts/dev-up.ps1` seeding was fixed (pipe instead of redirect) as part
   of this phase.
+
+## ADR 009: Profile readiness checks and stale-schema recovery (Phase 3C Closeout)
+
+**Context:** After adding the flat-metric profile in Phase 3C, switching to a
+profile whose backing tables don't exist crashes the app with a raw
+`psycopg2.errors.UndefinedTable` traceback. This can happen when:
+- A developer starts the app before seeding the database.
+- The seed script is only partially applied.
+- A table is dropped during debugging or maintenance.
+
+**Decision:** Introduce a three-layer defence:
+1. `db.table_exists()` — queries `information_schema.tables` (parameterized,
+   safe) to check if a table exists without touching it.
+2. `profile_state.py` — structured readiness checks that return a
+   `ProfileReadiness` result with status (`READY`, `SCHEMA_MISSING`, `NO_DATA`),
+   present/missing tables, and row counts. Never throws for expected conditions.
+3. `app.py` readiness guards — check readiness before rendering; display clean
+   messages with reseed/import guidance for non-ready profiles.
+
+Additionally, harden `importer.get_current_row_counts()` and
+`get_flat_metric_row_counts()` to return zeros for missing tables, and rewrite
+`dev-up.ps1` with `ON_ERROR_STOP=1` so seed failures are not silently swallowed.
+
+**Consequences:**
+- Switching to an unseeded profile shows a helpful message instead of a crash.
+- Row-count sidebar displays zeros instead of crashing when tables are absent.
+- Seed failures are reported immediately by the bootstrap script.
+- The readiness check adds one extra `information_schema` query per table per
+  page load — negligible overhead for the small table counts involved.

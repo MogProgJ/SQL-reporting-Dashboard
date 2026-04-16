@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added (Phase 3C Closeout — Multi-Profile Hardening)
+- `profile_state.py` — `ReadinessStatus` enum, `ProfileReadiness` dataclass, `check_order_readiness()` / `check_flat_metric_readiness()`
+- `db.table_exists()` — safe check via `information_schema.tables`
+- Readiness guards in `app.py` — clean messages for missing tables (SCHEMA_MISSING) and empty datasets (NO_DATA) instead of raw tracebacks
+- `_render_profile_not_ready()` helper with profile-specific reseed/import guidance
+- Hardened `importer.get_current_row_counts()` / `get_flat_metric_row_counts()` — return zeros for missing tables
+- `scripts/dev-up.ps1` rewrite — `-Reseed`, `-SkipDocker`, `-SkipInstall` flags, direct venv python (no Activate.ps1), Docker reachability check, `ON_ERROR_STOP=1` on psql
+- 18 new unit tests in `tests/test_profile_state.py` (120 total, 0 unit failures)
+
+### Fixed (Phase 3C Closeout)
+- `dashboard_order.py` `render_filters()` error message now mentions reseed instead of misleading "tables appear empty"
+
 ### Added (Phase 3C — Multi-Profile Analytics)
 - `ProfileType` enum (`ORDER_REPORTING`, `FLAT_METRIC`) in `dataset_profile.py`
 - Flat-metric canonical model (`flat_metric_model.py`) — single entity with entity/metric_name/metric_value/year/score/rank columns, "float" dtype support

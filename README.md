@@ -16,6 +16,8 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 - openpyxl (Excel import)
 
 ## What it shows
+- **Multi-profile analytics** — Order Reporting (5 normalised tables) and Flat Metric (single table) profiles with sidebar selector
+- **Profile readiness** — safe startup when tables are missing or empty; clean reseed/import guidance instead of raw tracebacks
 - **Data source switching** — demo seed, CSV bundle upload, or Excel workbook upload
 - **Import validation** — schema checks, type checks, referential integrity, user-friendly error messages
 - **Downloadable templates** — example CSV bundle and Excel workbook for the supported format
@@ -97,6 +99,7 @@ app.py              Streamlit dashboard (entry point)
 formatters.py       Display helpers (currency, rank, %)
 db.py               Database connection helper
 queries.py          Parameterized query functions
+profile_state.py    Profile readiness checks (table existence + row counts)
 canonical_model.py  Canonical entity/column specs
 dataset_profile.py  Import result + profile value types
 importer.py         Import orchestrator (CSV / Excel → DB)
@@ -148,6 +151,8 @@ Integration tests require a running seeded Postgres instance
 - [x] Canonical data model + import pipeline (CSV, Excel)
 - [x] Data source switching UI with validation feedback
 - [x] Import UX hardening (friendly errors, templates, dependency handling)
+- [x] Multi-profile analytics (Order Reporting + Flat Metric)
+- [x] Profile readiness guards (safe startup with missing tables)
 - [ ] Role-based views or saved filter presets
 - [ ] Scheduled PDF/email reports
 

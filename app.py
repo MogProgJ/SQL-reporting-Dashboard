@@ -1,4 +1,4 @@
-"""SQL Reporting Dashboard — Phase 3C: Multi-Profile Analytics."""
+"""SQL Reporting Dashboard — Phase 3C Closeout: Multi-Profile Hardening."""
 
 import streamlit as st
 
@@ -45,6 +45,11 @@ from importer import (
     import_excel_workbook,
     import_flat_metric_csv,
     import_flat_metric_excel,
+)
+from profile_state import (
+    ReadinessStatus,
+    check_flat_metric_readiness,
+    check_order_readiness,
 )
 from readers import EXPECTED_NAMES_SORTED
 
@@ -110,6 +115,29 @@ def _show_import_result(result) -> None:
                     st.caption(f"{w.entity}.{w.column}: {w.message}")
 
 
+# ── Profile-not-ready UI helpers ────────────────────────────────
+
+def _render_profile_not_ready(profile_label: str, readiness) -> None:
+    """Show a clean message when a profile cannot render."""
+    if readiness.status == ReadinessStatus.SCHEMA_MISSING:
+        missing = ", ".join(f"`{t}`" for t in readiness.missing_tables)
+        st.warning(
+            f"**{profile_label} profile is not initialised.**\n\n"
+            f"Missing table(s): {missing}\n\n"
+            "Run the bootstrap script or reseed the database to create the schema:\n"
+            "```\n.\\scripts\\dev-up.ps1\n```\n"
+            "Or seed manually:\n"
+            "```\nGet-Content seed\\seed.sql -Raw | docker exec -i reporting_db psql -U postgres -d reporting\n```"
+        )
+    elif readiness.status == ReadinessStatus.NO_DATA:
+        st.info(
+            f"**{profile_label} profile has no data loaded.**\n\n"
+            "Import a dataset using the sidebar, or reseed the demo data:\n"
+            "```\nGet-Content seed\\seed.sql -Raw | docker exec -i reporting_db psql -U postgres -d reporting\n```"
+        )
+    st.stop()
+
+
 # ── Sidebar ─────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -125,11 +153,14 @@ with st.sidebar:
 
     st.divider()
 
+    # ── Readiness check ─────────────────────────────────────
+    readiness = check_order_readiness() if is_order else check_flat_metric_readiness()
+
     # ── Data Source ──────────────────────────────────────────
     st.header("Data Source")
 
     if is_order:
-        row_counts = get_current_row_counts()
+        row_counts = readiness.row_counts if readiness.is_ready else get_current_row_counts()
         total_rows = sum(row_counts.values())
         st.caption(
             f"**Current dataset:** {total_rows:,} rows across "
@@ -214,7 +245,7 @@ with st.sidebar:
 
     else:
         # Flat Metric data source
-        fm_counts = get_flat_metric_row_counts()
+        fm_counts = readiness.row_counts if readiness.is_ready else get_flat_metric_row_counts()
         total_fm = sum(fm_counts.values())
         st.caption(f"**Current dataset:** {total_fm:,} rows")
 
@@ -270,14 +301,22 @@ with st.sidebar:
     # ── Filters ─────────────────────────────────────────────
     st.header("Filters")
 
-    if is_order:
+    if not readiness.is_ready:
+        st.caption("Filters unavailable — profile not ready.")
+        filters = {}
+        top_n = 10
+    elif is_order:
         filters, top_n = dashboard_order.render_filters()
     else:
         filters = dashboard_flat_metric.render_filters()
+        top_n = 10
 
 # ── Main content ────────────────────────────────────────────────
 
-if is_order:
+if not readiness.is_ready:
+    profile_label = "Order Reporting" if is_order else "Flat Metric"
+    _render_profile_not_ready(profile_label, readiness)
+elif is_order:
     dashboard_order.render(filters, top_n)
 else:
     dashboard_flat_metric.render(filters)

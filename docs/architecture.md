@@ -28,12 +28,13 @@ This project is intentionally small, but structured like production code.
 └───────────────────────────────┘
 ```
 
-- **app.py** — Thin orchestrator (~240 lines). Sidebar has profile selector (Order Reporting / Flat Metric), per-profile Data Source section, and per-profile filters. Delegates rendering to `dashboard_order.py` or `dashboard_flat_metric.py`.
+- **profile_state.py** — Profile readiness checks. Queries `information_schema.tables` to determine if a profile's backing tables exist and contain data. Returns `ProfileReadiness` (status, present/missing tables, row counts). Used by `app.py` to gate rendering.
+- **app.py** — Thin orchestrator (~305 lines). Sidebar has profile selector (Order Reporting / Flat Metric), per-profile Data Source section, and per-profile filters. Runs readiness check before rendering; shows clean recovery guidance when tables are missing or empty. Delegates rendering to `dashboard_order.py` or `dashboard_flat_metric.py`.
 - **dashboard_order.py** — Order-profile dashboard: 4 tabs (Overview, Breakdown, Outliers, Detail & Export). Plotly charts, `st.column_config` formatting.
 - **dashboard_flat_metric.py** — Flat-metric dashboard: 3 tabs (Rankings, Trends, Detail & Export). Horizontal bar chart, line chart, ranking table.
 - **formatters.py** — Pure display helpers: `cents_to_dollars`, `fmt_number`, `fmt_pct`, `add_rank`. Tested independently.
 - **queries.py** — All SQL lives here. Functions accept filter kwargs and return DataFrames. Parameterized queries prevent injection. Includes IQR-based anomaly helpers.
-- **db.py** — Thin connection wrapper around `psycopg2`. Reads `DATABASE_URL` from `.env`.
+- **db.py** — Thin connection wrapper around `psycopg2`. Reads `DATABASE_URL` from `.env`. Also provides `table_exists()` helper via `information_schema`.
 - **canonical_model.py** — Defines the five canonical order-profile entities (columns, types, natural keys).
 - **flat_metric_model.py** — Defines the flat-metric entity (entity, metric_name, metric_value, year, score, rank). Supports "float" dtype.
 - **flat_metric_queries.py** — SQL queries for the flat-metric dashboard — KPIs, rankings, comparison, trend, detail with parameterised filter builder.
@@ -49,6 +50,7 @@ This project is intentionally small, but structured like production code.
 ## File layout
 
 ```
+profile_state.py    ← Profile readiness checks (table existence + row counts)
 app.py              ← Streamlit orchestrator (entry point, profile selector)
 dashboard_order.py  ← Order-profile dashboard (4 tabs)
 dashboard_flat_metric.py ← Flat-metric dashboard (3 tabs)

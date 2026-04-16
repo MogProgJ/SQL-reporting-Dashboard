@@ -88,6 +88,18 @@ promises.
 - `scripts/dev-up.ps1` seeding fixed (pipe instead of fragile redirect)
 - 30 new tests (102 total, 17 skipped, 0 failures)
 
+## Phase 3C Closeout — Multi-Profile Hardening ✅
+
+- `profile_state.py` — `ReadinessStatus` enum + `ProfileReadiness` dataclass
+- `db.table_exists()` via `information_schema.tables` for safe pre-checks
+- Readiness guards in `app.py` — clean messages for SCHEMA_MISSING / NO_DATA
+- Hardened `importer` row-count helpers — return zeros for missing tables
+- `scripts/dev-up.ps1` rewrite: `-Reseed`, `-SkipDocker`, `-SkipInstall` flags,
+  direct venv python, Docker reachability check, `ON_ERROR_STOP=1`
+- `dashboard_order.py` error message fix (reseed guidance instead of misleading text)
+- 18 new tests (120 total, 0 unit failures)
+- ADR 009: profile readiness + stale-schema recovery
+
 ## Phase 4 — Multi-Page Expansion (planned)
 
 - Separate Streamlit pages for deep-dive views (customer detail, product
