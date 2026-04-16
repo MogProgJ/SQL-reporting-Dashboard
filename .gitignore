@@ -11,3 +11,6 @@ dist/
 
 # Logs
 *.log
+
+# Saved views (user-specific, not committed)
+saved_views/

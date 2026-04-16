@@ -313,12 +313,23 @@ def _render_detail(filters: dict) -> None:
         )
 
         csv = detail.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="\u2b07 Download CSV",
-            data=csv,
-            file_name="flat_metric_detail.csv",
-            mime="text/csv",
-        )
+        col_csv, col_pack = st.columns(2)
+        with col_csv:
+            st.download_button(
+                label="\u2b07 Download CSV",
+                data=csv,
+                file_name="flat_metric_detail.csv",
+                mime="text/csv",
+            )
+        with col_pack:
+            from report_pack import build_fm_pack
+            pack_bytes = build_fm_pack(filters)
+            st.download_button(
+                label="\U0001f4e6 Report pack (JSON)",
+                data=pack_bytes,
+                file_name="fm_report_pack.json",
+                mime="application/json",
+            )
         st.caption("Raw flat-metric data export.")
     else:
         _empty_state("No detail data for the current filters.")

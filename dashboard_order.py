@@ -170,7 +170,7 @@ def render(filters: dict, top_n: int) -> None:
 
     # ── Detail & Export ─────────────────────────────────────
     with tab_detail:
-        _render_detail(filters)
+        _render_detail(filters, top_n)
 
 
 # ── Tab renderers ───────────────────────────────────────────────
@@ -509,7 +509,7 @@ def _render_outliers(trend: pd.DataFrame, filters: dict) -> None:
             st.info("No trend data available for outlier detection.")
 
 
-def _render_detail(filters: dict) -> None:
+def _render_detail(filters: dict, top_n: int = 10) -> None:
     detail = get_order_detail(**filters)
 
     if not detail.empty:
@@ -564,12 +564,23 @@ def _render_detail(filters: dict) -> None:
         )
 
         csv = detail.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="\u2b07 Download CSV",
-            data=csv,
-            file_name="order_detail.csv",
-            mime="text/csv",
-        )
+        col_csv, col_pack = st.columns(2)
+        with col_csv:
+            st.download_button(
+                label="\u2b07 Download CSV",
+                data=csv,
+                file_name="order_detail.csv",
+                mime="text/csv",
+            )
+        with col_pack:
+            from report_pack import build_order_pack
+            pack_bytes = build_order_pack(filters, top_n)
+            st.download_button(
+                label="\U0001f4e6 Report pack (JSON)",
+                data=pack_bytes,
+                file_name="order_report_pack.json",
+                mime="application/json",
+            )
         st.caption(
             "Raw data export — monetary values are in cents (integer) to "
             "preserve precision."

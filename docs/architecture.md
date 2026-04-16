@@ -29,7 +29,7 @@ This project is intentionally small, but structured like production code.
 ```
 
 - **profile_state.py** — Profile readiness checks. Queries `information_schema.tables` to determine if a profile's backing tables exist and contain data. Returns `ProfileReadiness` (status, present/missing tables, row counts). Used by `app.py` to gate rendering.
-- **app.py** — Thin orchestrator (~330 lines). Sidebar has profile selector (Order Reporting / Flat Metric), page navigation, per-profile Data Source section, and per-profile filters. Runs readiness check before rendering; routes to summary dashboards or deep-dive pages based on nav state. Shows clean recovery guidance when tables are missing or empty. Delegates rendering to `dashboard_order.py`, `dashboard_flat_metric.py`, or the five `page_*` modules.
+- **app.py** — Thin orchestrator (~360 lines). Sidebar has profile selector (Order Reporting / Flat Metric), page navigation, per-profile Data Source section, per-profile filters, and a Saved Views section (save/load/delete + demo presets). Runs readiness check before rendering; routes to summary dashboards or deep-dive pages based on nav state. Shows clean recovery guidance when tables are missing or empty. Delegates rendering to `dashboard_order.py`, `dashboard_flat_metric.py`, or the five `page_*` modules.
 - **dashboard_order.py** — Order-profile summary dashboard: 4 tabs (Overview, Breakdown, Outliers, Detail & Export). Plotly charts, `st.column_config` formatting. Includes navigation hooks to drill into customer/product detail.
 - **dashboard_flat_metric.py** — Flat-metric summary dashboard: 3 tabs (Rankings, Trends, Detail & Export). Horizontal bar chart, line chart, ranking table. Includes navigation hooks to drill into entity/metric detail.
 - **nav_state.py** — Lightweight session-state navigation. Per-profile page enums (`OrderPage`, `FlatMetricPage`), page/target state in `st.session_state`, sidebar selectbox, back button. `get_page()` validates against the active profile's enum to prevent stale cross-profile page values.
@@ -49,6 +49,9 @@ This project is intentionally small, but structured like production code.
 - **validators.py** — Schema checks, null/type/positive-value checks, cross-entity referential integrity.
 - **normalizers.py** — Column name cleanup, Int64/date/text coercion per canonical spec. Pure functions.
 - **loader.py** — Atomic TRUNCATE + reload into the five reporting tables, respecting FK order.
+- **saved_views.py** — SavedView dataclass model with JSON-file persistence. `capture_current_state()` serialises the active session (profile, page, target, filters). `apply_view()` restores state into `st.session_state` with page-name validation and stale-state warnings. Views stored as individual JSON files under `saved_views/`.
+- **report_pack.py** — Profile-aware JSON report-pack builder. `build_order_pack()` bundles KPIs, revenue trend, top-N customers/products, category breakdown, and detail slice. `build_fm_pack()` bundles KPIs, ranking, trend, and detail. Capped at 500 detail rows per pack.
+- **demo_presets.py** — Built-in preset saved views for showcase flows. Reuses the SavedView model with `is_preset=True`. Provides `get_presets(is_order)` for sidebar integration.
 - **dataset_profile.py** — Value types: `ProfileType`, `SourceType`, `ValidationIssue`, `ImportResult`, `DatasetProfile`.
 - **sql/kpis.sql** — Reference copy of key queries for manual testing / documentation.
 - **seed/seed.sql** — Idempotent script that creates the schema and inserts demo data.
@@ -78,6 +81,9 @@ readers.py          ← CSV bundle + Excel workbook + flat-metric readers
 validators.py       ← Schema + referential validation (parameterised)
 normalizers.py      ← Type coercion (Int64, float64, dates, text)
 loader.py           ← Atomic TRUNCATE + reload into Postgres (both profiles)
+saved_views.py      ← Saved-view model + JSON persistence + capture/apply
+report_pack.py      ← Profile-aware JSON report-pack builder (KPIs, tables, detail)
+demo_presets.py     ← Built-in preset views for demo/showcase flows
 requirements.txt        ← Runtime dependencies (pinned ranges)
 requirements-dev.txt    ← Dev/test dependencies
 Dockerfile              ← App container image (Python 3.11-slim, Streamlit)

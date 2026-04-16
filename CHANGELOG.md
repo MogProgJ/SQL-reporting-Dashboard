@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added (Phase 5B — Workflow & Shareability)
+- `saved_views.py` — SavedView dataclass model with JSON-file persistence (`saved_views/` directory, one file per view)
+- `capture_current_state()` / `apply_view()` — serialise and restore full analytical state (profile, page, target, filters)
+- Saved Views sidebar section in `app.py` — save, load, and delete views with title/description
+- `report_pack.py` — profile-aware JSON report-pack builder with KPIs, trends, top-N tables, and detail slices
+- Report pack download button alongside existing CSV export in both dashboards
+- `demo_presets.py` — built-in preset views (Full overview, Top 5 products, Completed only for Order; All entities for FM)
+- Demo presets sidebar section with one-click load
+- Graceful stale-state handling: `apply_view()` validates page names against active profile enums, warns on unknown pages
+- Profile radio now has explicit `key="_profile_radio"` for programmatic state restore
+- `saved_views/` added to `.gitignore` (user views not committed)
+- 26 new tests in `tests/test_phase5b.py`: SavedView model, persistence, capture, apply, report-pack helpers, demo presets
+
 ### Added (Phase 5A — Productionization & Delivery)
 - `Dockerfile` — Python 3.11-slim app container with Streamlit on port 8501, healthcheck
 - `.dockerignore` — excludes tests, docs, scripts, .venv from image

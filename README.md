@@ -33,6 +33,9 @@ The UI is intentionally simple. The value is in the data model and the SQL.
 - **Anomaly / outlier surfacing** — unusually large orders and high-revenue days (IQR rule)
 - **Detail table** — formatted order-item view with order totals
 - **CSV export** — download raw filtered data
+- **Report packs** — downloadable JSON bundles (KPIs + trends + top-N + detail) per profile
+- **Saved views** — save, load, and delete analytical states (profile + page + filters) with local JSON persistence
+- **Demo presets** — built-in one-click showcase views for both profiles
 
 ## Schema
 Five tables: `customers`, `categories`, `products`, `orders`, `order_items`.
@@ -123,6 +126,9 @@ readers.py          CSV bundle + Excel workbook readers
 validators.py       Schema + referential validation
 normalizers.py      Type coercion (Int64, dates, text)
 loader.py           Atomic TRUNCATE + reload into Postgres
+saved_views.py      Saved-view model + JSON persistence + capture/apply
+report_pack.py      Profile-aware JSON report-pack builder
+demo_presets.py     Built-in preset views for demo/showcase
 requirements.txt        Runtime dependencies (pinned ranges)
 requirements-dev.txt    Dev/test dependencies
 docker-compose.yml      DB + optional app service

@@ -256,3 +256,32 @@ dev dependencies with no version pins.
 - Unit and integration tests are cleanly separated by marker.
 - `queries.py` dropped from ~607 to ~460 lines with no behaviour change.
 - Dev dependencies are isolated; runtime containers stay lean.
+
+## ADR 013: Saved views with local JSON persistence (Phase 5B)
+
+**Context:** Users had no way to save and restore a useful analysis state.
+Switching between views or sharing a setup required manually re-applying
+filters, navigating to the right page, and selecting the right profile.
+Exports were limited to per-table CSV.
+
+**Decision:**
+1. Introduce `SavedView` dataclass capturing full analytical state: profile
+   type, page, deep-dive target, all filter values, top-N, title, description,
+   and timestamp.
+2. Persist each view as an individual JSON file under `saved_views/` (one file
+   per UUID). No cloud storage, no auth, no database table. Directory is
+   `.gitignore`'d so user views are not committed.
+3. `apply_view()` validates page names against the active profile's enum and
+   returns warnings for stale or invalid state.
+4. Add `report_pack.py` — profile-aware JSON bundles with KPIs, trend/ranking
+   tables, and a detail slice (capped at 500 rows). Available alongside the
+   existing CSV export.
+5. Add `demo_presets.py` — built-in preset views reusing the SavedView model
+   with `is_preset=True` for demo/showcase flows.
+
+**Consequences:**
+- Users can save, load, and delete analytical states from the sidebar.
+- Report packs provide richer export than CSV alone (metadata + KPIs + tables).
+- Demo presets enable one-click showcase without manual filter setup.
+- No cloud dependency or database schema changes.
+- Stale state (deleted entities, renamed pages) is handled gracefully.

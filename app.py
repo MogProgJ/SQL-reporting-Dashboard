@@ -63,6 +63,14 @@ from profile_state import (
     check_order_readiness,
 )
 from readers import EXPECTED_NAMES_SORTED
+from saved_views import (
+    apply_view,
+    capture_current_state,
+    delete_view,
+    list_views,
+    save_view,
+)
+import demo_presets
 
 # ── Header ──────────────────────────────────────────────────────
 
@@ -159,6 +167,7 @@ with st.sidebar:
         ["\U0001f6d2 Order Reporting", "\U0001f4cf Flat Metric"],
         index=0,
         label_visibility="collapsed",
+        key="_profile_radio",
     )
     is_order = profile_choice.startswith("\U0001f6d2")
 
@@ -324,6 +333,78 @@ with st.sidebar:
     else:
         filters = dashboard_flat_metric.render_filters()
         top_n = 10
+
+    st.divider()
+
+    # ── Saved Views ─────────────────────────────────────────
+    st.header("Views")
+
+    # Save current view
+    with st.expander("\U0001f4be Save current view"):
+        view_title = st.text_input("Title", key="_save_view_title",
+                                    placeholder="e.g. Q1 revenue overview")
+        view_desc = st.text_input("Note (optional)", key="_save_view_desc",
+                                   placeholder="Short description")
+        if st.button("Save", use_container_width=True, key="_save_view_btn"):
+            if view_title.strip():
+                current_page = get_page(is_order)
+                from nav_state import get_target
+                current_target = get_target()
+                sv = capture_current_state(
+                    title=view_title.strip(),
+                    is_order=is_order,
+                    page=current_page,
+                    target=current_target,
+                    filters=filters,
+                    top_n=top_n,
+                    description=view_desc.strip(),
+                )
+                save_view(sv)
+                st.success(f"Saved: **{sv.title}**")
+            else:
+                st.warning("Enter a title to save.")
+
+    # Load / manage saved views
+    all_views = list_views()
+    user_views = [v for v in all_views if not v.is_preset]
+    if user_views:
+        with st.expander(f"\U0001f4c2 Saved views ({len(user_views)})"):
+            view_labels = [f"{v.title} ({v.subtitle})" for v in user_views]
+            sel_idx = st.selectbox("Select a view", range(len(view_labels)),
+                                   format_func=lambda i: view_labels[i],
+                                   key="_load_view_sel")
+            sel_view = user_views[sel_idx]
+            st.caption(f"\U0001f552 {sel_view.created_at[:16]}")
+            if sel_view.description:
+                st.caption(sel_view.description)
+
+            col_load, col_del = st.columns(2)
+            with col_load:
+                if st.button("Load", use_container_width=True, key="_load_view_btn"):
+                    warns = apply_view(sel_view)
+                    if warns:
+                        for w in warns:
+                            st.warning(w)
+                    st.rerun()
+            with col_del:
+                if st.button("Delete", use_container_width=True, key="_del_view_btn"):
+                    delete_view(sel_view.id)
+                    st.rerun()
+
+    # Demo presets
+    presets = demo_presets.get_presets(is_order)
+    if presets:
+        with st.expander("\U0001f680 Demo presets"):
+            preset_labels = [p.title for p in presets]
+            sel_p_idx = st.selectbox("Preset", range(len(preset_labels)),
+                                      format_func=lambda i: preset_labels[i],
+                                      key="_preset_sel")
+            sel_preset = presets[sel_p_idx]
+            if sel_preset.description:
+                st.caption(sel_preset.description)
+            if st.button("Load preset", use_container_width=True, key="_load_preset_btn"):
+                apply_view(sel_preset)
+                st.rerun()
 
 # ── Main content ────────────────────────────────────────────────
 
