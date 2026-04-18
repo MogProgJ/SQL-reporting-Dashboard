@@ -41,6 +41,7 @@ from importer import (
     generate_example_excel,
     get_current_row_counts,
     get_flat_metric_row_counts,
+    import_adapted_frames,
     import_csv_bundle,
     import_excel_workbook,
     import_flat_metric_csv,
@@ -134,6 +135,112 @@ def _show_import_result(result) -> None:
                     st.caption(f"{w.entity}.{w.column}: {w.message}")
 
 
+def _render_smart_upload() -> None:
+    """Smart Upload — profile, preview, and adapt uploaded files."""
+    from io import BytesIO
+
+    from adapters import find_adapter, load_all_adapters
+    from file_profiler import Importability, profile_file
+
+    load_all_adapters()
+
+    uploaded = st.file_uploader(
+        "Upload any CSV, Excel, or ZIP file",
+        type=["csv", "xlsx", "xls", "zip"],
+        key="smart_upload",
+    )
+    if not uploaded:
+        st.caption(
+            "Drop a file to inspect its structure, preview data, "
+            "and optionally import via an adapter."
+        )
+        return
+
+    buf = BytesIO(uploaded.getvalue())
+    profile = profile_file(uploaded.name, buf)
+
+    # Store in session for the preview panel
+    st.session_state["_smart_profile"] = profile
+
+    # Status badge
+    _BADGE = {
+        Importability.FULL_IMPORT: ("✅", "Fully importable"),
+        Importability.ADAPTER_IMPORT: ("🔄", "Importable via adapter"),
+        Importability.PREVIEW_ONLY: ("👁️", "Preview only"),
+        Importability.PARTIAL_DATASET: ("⚠️", "Partial dataset"),
+        Importability.UNSUPPORTED: ("❌", "Not supported"),
+    }
+    icon, label = _BADGE.get(profile.importability, ("❓", "Unknown"))
+    st.markdown(f"**{icon} {label}**")
+    st.caption(profile.confidence)
+
+    # Warnings
+    for w in profile.warnings:
+        st.warning(w, icon="⚠️")
+
+    # Suggestions
+    for s in profile.suggestions:
+        st.info(s, icon="💡")
+
+    # Missing entities (partial dataset)
+    if profile.missing_entities:
+        st.caption(f"Missing entities: {', '.join(profile.missing_entities)}")
+
+    # Asset preview
+    if profile.assets:
+        with st.expander(f"📋 Structure ({len(profile.assets)} table(s))"):
+            for asset in profile.assets:
+                st.markdown(f"**{asset.name}** — {asset.row_count} rows, {len(asset.columns)} columns")
+                st.caption(", ".join(asset.columns[:15]))
+
+    # Archive contents
+    if profile.archive_entries:
+        with st.expander(f"📦 Archive contents ({len(profile.archive_entries)} entries)"):
+            for entry in profile.archive_entries[:30]:
+                st.text(entry)
+
+    # Adapter plan + import
+    if profile.suggested_adapter:
+        adapter = find_adapter(profile)
+        if adapter:
+            buf.seek(0)
+            plan = adapter.plan(profile, buf)
+
+            with st.expander(f"🔧 Adapter: {adapter.description}"):
+                if plan.field_mappings:
+                    st.markdown("**Field mappings:**")
+                    for m in plan.field_mappings:
+                        note = f" ({m.transform})" if m.transform else ""
+                        st.caption(f"{m.source} → {m.target}{note}")
+                if plan.assumptions:
+                    st.markdown("**Assumptions:**")
+                    for a in plan.assumptions:
+                        st.caption(f"• {a}")
+                if plan.ignored_sheets:
+                    st.caption(f"Ignored: {', '.join(plan.ignored_sheets)}")
+                if plan.will_produce:
+                    st.caption(f"Will produce: {plan.will_produce}")
+
+            if profile.importability in (Importability.FULL_IMPORT, Importability.ADAPTER_IMPORT):
+                if st.button("⬆️ Import via adapter", use_container_width=True, key="smart_import_btn"):
+                    buf.seek(0)
+                    with st.spinner(f"Transforming via {adapter.name}…"):
+                        adapter_result = adapter.transform(buf)
+                    if not adapter_result.success:
+                        st.error(f"Adapter failed: {adapter_result.error}")
+                    else:
+                        for w in adapter_result.warnings:
+                            st.caption(f"⚠️ {w}")
+                        with st.spinner("Importing into database…"):
+                            result = import_adapted_frames(
+                                frames=adapter_result.frames,
+                                profile_family=adapter_result.profile_family.value,
+                                adapter_name=adapter_result.adapter_name,
+                                label=uploaded.name,
+                            )
+                        _show_import_result(result)
+
+
 # ── Profile-not-ready UI helpers ────────────────────────────────
 
 def _render_profile_not_ready(profile_label: str, readiness) -> None:
@@ -192,7 +299,7 @@ with st.sidebar:
 
         source_choice = st.radio(
             "Import data",
-            ["Demo (seed)", "Upload CSV bundle", "Upload Excel workbook"],
+            ["Demo (seed)", "Upload CSV bundle", "Upload Excel workbook", "Smart Upload"],
             index=0,
             label_visibility="collapsed",
         )
@@ -232,6 +339,13 @@ with st.sidebar:
                 with st.spinner("Importing Excel workbook\u2026"):
                     result = import_excel_workbook(xls_file, label=xls_file.name)
                 _show_import_result(result)
+
+        elif source_choice == "Smart Upload":
+            st.caption(
+                "Upload any CSV, Excel, or ZIP file. The app will detect "
+                "its format and suggest the best import path."
+            )
+            _render_smart_upload()
 
         else:
             st.info("Using built-in demo dataset (seed.sql).")
@@ -274,7 +388,7 @@ with st.sidebar:
 
         fm_source = st.radio(
             "Import data",
-            ["Demo (seed)", "Upload CSV", "Upload Excel"],
+            ["Demo (seed)", "Upload CSV", "Upload Excel", "Smart Upload"],
             index=0,
             label_visibility="collapsed",
             key="fm_source",
@@ -311,6 +425,13 @@ with st.sidebar:
                 with st.spinner("Importing flat metric Excel\u2026"):
                     result = import_flat_metric_excel(fm_xls, label=fm_xls.name)
                 _show_import_result(result)
+
+        elif fm_source == "Smart Upload":
+            st.caption(
+                "Upload any CSV, Excel, or ZIP file. The app will detect "
+                "its format and suggest the best import path."
+            )
+            _render_smart_upload()
 
         else:
             st.info("Using built-in demo dataset (seed.sql).")

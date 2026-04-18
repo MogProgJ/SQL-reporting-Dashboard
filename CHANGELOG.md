@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added (Phase 6 — Adaptive Ingestion & Smart Preview)
+- `file_profiler.py` — `profile_file()` inspects CSV/XLSX/ZIP uploads and returns a structured `FileProfile` with file type, tabular assets (columns, sample rows), detected profile family, suggested adapter, importability status, partial-dataset detection, and warnings/suggestions
+- `adapters/` package — adapter registry with `BaseAdapter` ABC, `AdapterPlan`/`AdapterResult` dataclasses, `register_adapter()`, `find_adapter()`, `find_adapter_by_name()`, `load_all_adapters()`
+- `adapters/canonical.py` — four canonical pass-through adapters wrapping existing readers (order Excel, order CSV bundle via ZIP, FM CSV, FM Excel)
+- `adapters/northwind_order.py` — Northwind-style order workbook adapter: detects `ordersdetails`/`employees`/`shippers`/`suppliers` sheets, resolves IDs to names, maps columns (`OrderDate→created_at`, `CustomerName→name`, `UnitPrice→unit_price_cents × 100`), defaults status to `"completed"`, ignores non-order sheets
+- `adapters/wide_flat_metric.py` — wide flat-metric adapter: detects entity + year + numeric metric columns, melts wide→long into canonical `flat_metrics` format with entity/metric_name/metric_value/year/score/rank
+- "Smart Upload" option in both profile Data Source sections: profiles uploaded files, shows structure/classification/warnings, displays adapter plan (field mappings, assumptions, ignored sheets), one-click "Import via adapter" button
+- Partial-dataset detection: single CSV resembling an order entity is flagged as `PARTIAL_DATASET` with missing-entity guidance
+- ZIP archive inspection: profiles contained CSV/XLSX assets, detects canonical CSV bundles inside ZIPs
+- `SourceType.ADAPTED` enum value for tracking adapter-based import provenance
+- `import_adapted_frames()` in importer.py — routes adapter-produced frames through the standard validate → normalize → load pipeline
+- 44 new tests in `tests/test_phase6.py`: file profiler (CSV/XLSX/ZIP/partial/unknown), adapter registry, Northwind adapter (plan/transform/mapping), wide FM adapter (melt/year/rank), canonical adapters, adapted import pipeline, end-to-end profiler→adapter→result flows
+
 ### Added (Phase 5B — Workflow & Shareability)
 - `saved_views.py` — SavedView dataclass model with JSON-file persistence (`saved_views/` directory, one file per view)
 - `capture_current_state()` / `apply_view()` — serialise and restore full analytical state (profile, page, target, filters)

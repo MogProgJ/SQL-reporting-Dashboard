@@ -86,6 +86,24 @@ def import_flat_metric_excel(
     return _import_flat_metric_frames(frames, SourceType.EXCEL_WORKBOOK, label)
 
 
+def import_adapted_frames(
+    frames: dict[str, pd.DataFrame],
+    profile_family: str,
+    adapter_name: str,
+    label: str = "Adapted import",
+) -> ImportResult:
+    """Import pre-transformed frames produced by an adapter.
+
+    Routes through the same validate → normalize → load pipeline as
+    canonical imports, but uses ``SourceType.ADAPTED`` to track provenance.
+    """
+    from file_profiler import ProfileFamily
+
+    if profile_family == ProfileFamily.FLAT_METRIC:
+        return _import_flat_metric_frames(frames, SourceType.ADAPTED, f"{label} ({adapter_name})")
+    return _import_frames(frames, SourceType.ADAPTED, f"{label} ({adapter_name})")
+
+
 def get_demo_profile() -> DatasetProfile:
     """Return a profile describing the built-in seed dataset."""
     return DatasetProfile(

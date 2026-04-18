@@ -25,6 +25,7 @@ class SourceType(str, Enum):
     DEMO_SEED = "demo_seed"
     CSV_BUNDLE = "csv_bundle"
     EXCEL_WORKBOOK = "excel_workbook"
+    ADAPTED = "adapted"  # imported via an adapter transformation
 
 
 @dataclass

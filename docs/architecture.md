@@ -17,6 +17,14 @@ This project is intentionally small, but structured like production code.
 │  formatters.py    │ importer  │  Display helpers │ Import orchestrator
 ├───────────────────┤  .py      │
 │  queries.py       ├───────────┤
+│                   │file_      │  Inspect files → FileProfile
+│                   │profiler.py│  (type, assets, classification)
+│                   ├───────────┤
+│                   │adapters/  │  Transform near-match formats
+│                   │  registry │  into canonical DataFrames
+│                   │  northwind│
+│                   │  wide_fm  │
+│                   ├───────────┤
 │                   │ readers   │  CSV / Excel → DataFrames
 │                   │ validators│  Schema + referential checks
 │                   │ normaliz… │  Type coercion
@@ -44,7 +52,12 @@ This project is intentionally small, but structured like production code.
 - **canonical_model.py** — Defines the five canonical order-profile entities (columns, types, natural keys).
 - **flat_metric_model.py** — Defines the flat-metric entity (entity, metric_name, metric_value, year, score, rank). Supports "float" dtype.
 - **flat_metric_queries.py** — SQL queries for the flat-metric dashboard — KPIs, rankings, comparison, trend, detail with parameterised filter builder. Rankings and comparison use snapshot semantics: one row per entity via `DISTINCT ON` (latest year) or an explicit `snapshot_year` parameter. `resolve_snapshot_year()` determines the year to use based on filter state.
-- **importer.py** — High-level orchestrator: `import_csv_bundle()` / `import_excel_workbook()`. Calls readers → validators → normalizers → loader.
+- **importer.py** — High-level orchestrator: `import_csv_bundle()` / `import_excel_workbook()` / `import_adapted_frames()`. Calls readers → validators → normalizers → loader. Also handles adapter-produced frames via `import_adapted_frames()` which routes to the appropriate pipeline based on profile family.
+- **file_profiler.py** — `profile_file(name, buf)` inspects CSV/XLSX/ZIP uploads and returns a `FileProfile` with file type, tabular assets (columns, samples, inferred types), detected profile family, suggested adapter name, importability status (FULL_IMPORT / ADAPTER_IMPORT / PREVIEW_ONLY / PARTIAL_DATASET / UNSUPPORTED), and guidance. Heuristics detect canonical order sheets, Northwind-style workbooks, flat-metric long/wide formats, partial order entities, and ZIP-bundled CSV sets.
+- **adapters/** — Adapter registry package. `BaseAdapter` ABC with `can_handle()` / `plan()` / `transform()`. `AdapterPlan` describes field mappings, assumptions, ignored sheets before transformation. `AdapterResult` carries success/failure, canonical frames, and warnings.
+  - `adapters/canonical.py` — Four pass-through adapters wrapping existing readers for canonical formats.
+  - `adapters/northwind_order.py` — Northwind-style order workbook → canonical Order Reporting. Resolves IDs to names via companion sheets, maps column aliases, converts dollar prices to cents, defaults missing status to "completed", ignores employees/shippers/suppliers.
+  - `adapters/wide_flat_metric.py` — Wide flat-metric table → canonical long format via `pd.melt()`. Detects entity/year/rank/score columns, melts remaining numeric columns into metric rows.
 - **readers.py** — `read_csv_bundle(files)` and `read_excel_workbook(buf)` return `dict[str, DataFrame]`.
 - **validators.py** — Schema checks, null/type/positive-value checks, cross-entity referential integrity.
 - **normalizers.py** — Column name cleanup, Int64/date/text coercion per canonical spec. Pure functions.
@@ -76,11 +89,17 @@ flat_metric_queries.py ← Flat-metric query functions + entity/metric detail + 
 canonical_model.py  ← Order entity/column specs (the import contract)
 flat_metric_model.py← Flat-metric entity spec
 dataset_profile.py  ← ProfileType, ImportResult, profile value types
-importer.py         ← Import orchestrator (CSV / Excel → DB, both profiles)
+importer.py         ← Import orchestrator (CSV / Excel / adapted → DB, both profiles)
 readers.py          ← CSV bundle + Excel workbook + flat-metric readers
 validators.py       ← Schema + referential validation (parameterised)
 normalizers.py      ← Type coercion (Int64, float64, dates, text)
 loader.py           ← Atomic TRUNCATE + reload into Postgres (both profiles)
+file_profiler.py    ← File inspection → FileProfile (type, assets, classification)
+adapters/
+  __init__.py       ← Adapter registry (BaseAdapter, register, find, load_all)
+  canonical.py      ← Pass-through adapters for canonical formats
+  northwind_order.py← Northwind workbook → canonical order model
+  wide_flat_metric.py← Wide metric table → canonical long format
 saved_views.py      ← Saved-view model + JSON persistence + capture/apply
 report_pack.py      ← Profile-aware JSON report-pack builder (KPIs, tables, detail)
 demo_presets.py     ← Built-in preset views for demo/showcase flows

@@ -285,3 +285,51 @@ Exports were limited to per-table CSV.
 - Demo presets enable one-click showcase without manual filter setup.
 - No cloud dependency or database schema changes.
 - Stale state (deleted entities, renamed pages) is handled gracefully.
+
+## ADR 014: File profiler + adapter registry (Phase 6)
+
+**Context:** The import pipeline (Phase 3B) only accepted files matching the
+exact canonical column names and structure. Real-world spreadsheets — Northwind
+exports, government statistics downloads, partial extracts — are close to
+canonical but need column renaming, ID resolution, unit conversion, and
+wide-to-long reshaping. Users had no way to preview a file before importing.
+
+**Decision:**
+1. Introduce `file_profiler.py` with `profile_file(name, buf) → FileProfile`.
+   Inspects CSV/XLSX/ZIP files via heuristics: canonical sheet matching,
+   Northwind-style detection, flat-metric column detection, wide-metric
+   detection, partial-entity detection, and ZIP content inspection.
+2. Classify each file with an `Importability` status: FULL_IMPORT,
+   ADAPTER_IMPORT, PREVIEW_ONLY, PARTIAL_DATASET, or UNSUPPORTED.
+3. Introduce `adapters/` package with `BaseAdapter` ABC and a flat registry
+   (no plugin system). Each adapter has `can_handle()`, `plan()`, and
+   `transform()` methods.
+4. Adapters produce canonical DataFrames that flow through the existing
+   validate → normalize → load pipeline via `import_adapted_frames()`.
+5. Add "Smart Upload" to the sidebar's Data Source section for both profiles.
+
+**Consequences:**
+- The app now handles Northwind-style workbooks and wide flat-metric tables.
+- Partial datasets are detected and explained rather than silently rejected.
+- ZIP archives are inspected and canonical CSV bundles inside are auto-detected.
+- The adapter plan (field mappings, assumptions) is shown to the user before import.
+- Existing canonical imports continue to work exactly as before.
+- New adapters can be added by subclassing BaseAdapter and calling register_adapter().
+
+## ADR 015: Northwind adapter — column aliasing and ID resolution (Phase 6)
+
+**Context:** Northwind-style order workbooks use ID-based foreign keys
+(`CustomerID`, `ProductID`, `CategoryID`) and different column names
+(`OrderDate`, `UnitPrice`, `ordersdetails` sheet).
+
+**Decision:**
+Map aliases with fuzzy column matching (`_pick()`), resolve IDs to names
+via companion sheets, convert dollar prices to cents (× 100), default
+missing `status` to `"completed"`, and ignore `employees`/`shippers`/
+`suppliers` sheets. All mappings and assumptions are documented in the
+`AdapterPlan` shown to the user before import.
+
+**Consequences:**
+- Northwind exports can be imported with one click.
+- Price conversion and default assumptions are transparent.
+- ID resolution failures degrade gracefully (use ID as fallback name).
