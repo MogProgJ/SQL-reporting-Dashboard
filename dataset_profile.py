@@ -26,6 +26,7 @@ class SourceType(str, Enum):
     CSV_BUNDLE = "csv_bundle"
     EXCEL_WORKBOOK = "excel_workbook"
     ADAPTED = "adapted"  # imported via an adapter transformation
+    ASSEMBLED = "assembled"  # multi-file assembly import
 
 
 @dataclass

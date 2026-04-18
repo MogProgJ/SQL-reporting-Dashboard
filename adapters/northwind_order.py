@@ -349,7 +349,7 @@ class NorthwindOrderAdapter(BaseAdapter):
             result["quantity"] = 1
             warnings.append("No quantity column in order details; defaulting to 1.")
 
-        # Price
+        # Price — with fallback to products sheet
         if price_col:
             raw = pd.to_numeric(
                 df[cols.get(price_col.lower().strip(), price_col)], errors="coerce"
@@ -360,8 +360,63 @@ class NorthwindOrderAdapter(BaseAdapter):
                 result["unit_price_cents"] = (raw * 100).round(0).astype(int)
                 warnings.append("Order item prices assumed to be in dollars; converted to cents.")
         else:
-            result["unit_price_cents"] = 0
-            warnings.append("No price column in order details; defaulting to 0.")
+            # No price in order details — derive from products sheet
+            result["unit_price_cents"] = self._derive_price_from_products(
+                df, cols, prod_col, xls, slm, warnings,
+            )
+
+        return result.reset_index(drop=True)
+
+    def _derive_price_from_products(
+        self, detail_df, detail_cols, prod_col, xls, slm, warnings,
+    ) -> pd.Series:
+        """Derive unit_price_cents for order items from the products sheet.
+
+        Joins on ProductID to fetch the price from the products table.
+        Returns a Series of integer cents, or 0 where lookup fails.
+        """
+        try:
+            prods = self._read_sheet(xls, slm, "products")
+            prod_cols = {c.lower().strip(): c for c in prods.columns}
+            prod_id_col = _pick(prod_cols, "productid", "product_id", "id")
+            prod_price_col = _pick(prod_cols, "unitprice", "unit_price", "price",
+                                   "unit_price_cents", "unitpricecents")
+
+            if prod_id_col and prod_price_col:
+                # Build lookup: ProductID → price in cents
+                raw_prices = pd.to_numeric(
+                    prods[prod_price_col], errors="coerce"
+                ).fillna(0)
+                if prod_price_col.lower().strip() in ("unit_price_cents", "unitpricecents"):
+                    price_cents = raw_prices.round(0).astype(int)
+                else:
+                    price_cents = (raw_prices * 100).round(0).astype(int)
+
+                price_lookup = dict(zip(prods[prod_id_col], price_cents))
+
+                # Find the ProductID column in order details
+                detail_prod_id = _pick(detail_cols, "productid", "product_id")
+                if detail_prod_id:
+                    result = detail_df[detail_prod_id].map(price_lookup).fillna(0).astype(int)
+                    filled = (result > 0).sum()
+                    total = len(result)
+                    warnings.append(
+                        f"No price column in order details; derived from products sheet "
+                        f"({filled}/{total} items matched)."
+                    )
+                    if prod_price_col.lower().strip() not in ("unit_price_cents", "unitpricecents"):
+                        warnings.append(
+                            "Product prices assumed to be in dollars; converted to cents."
+                        )
+                    return result
+        except Exception:
+            pass
+
+        warnings.append(
+            "No price column in order details and could not derive from products sheet; "
+            "defaulting to 0."
+        )
+        return pd.Series([0] * len(detail_df), dtype=int)
 
         return result.reset_index(drop=True)
 
@@ -415,14 +470,32 @@ class NorthwindOrderAdapter(BaseAdapter):
             if "status" not in cols and "orderstatus" not in cols:
                 assumptions.append("No status column — all orders will default to 'completed'.")
 
-        # Price assumption
-        for sheet_alias in ("products", "orderdetails", "ordersdetails", "order_details"):
+        # Check order details for price column
+        detail_has_price = False
+        for sheet_alias in ("orderdetails", "ordersdetails", "order_details"):
             if sheet_alias in slm:
                 df = xls.parse(slm[sheet_alias], nrows=0)
                 cols = {c.lower().strip() for c in df.columns}
-                if "unitprice" in cols or "price" in cols:
-                    assumptions.append("Prices assumed to be in dollars; will be converted to cents (×100).")
-                    break
+                price_hints = {"unitprice", "unit_price", "price", "unit_price_cents", "unitpricecents"}
+                if price_hints & cols:
+                    detail_has_price = True
+                break
+
+        # Price assumption
+        products_has_price = False
+        if "products" in slm:
+            df = xls.parse(slm["products"], nrows=0)
+            cols = {c.lower().strip() for c in df.columns}
+            if "unitprice" in cols or "price" in cols:
+                products_has_price = True
+
+        if not detail_has_price and products_has_price:
+            assumptions.append(
+                "Order details lack a price column — prices will be derived from "
+                "the products sheet via ProductID join."
+            )
+        if detail_has_price or products_has_price:
+            assumptions.append("Prices assumed to be in dollars; will be converted to cents (×100).")
 
         return assumptions
 

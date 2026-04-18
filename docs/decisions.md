@@ -333,3 +333,83 @@ missing `status` to `"completed"`, and ignore `employees`/`shippers`/
 - Northwind exports can be imported with one click.
 - Price conversion and default assumptions are transparent.
 - ID resolution failures degrade gracefully (use ID as fallback name).
+
+## ADR 016: Encoding-resilient CSV parsing (Phase 6A)
+
+**Context:** Real-world CSV files frequently use non-UTF-8 encodings
+(CP1252, Latin-1) and non-comma delimiters (semicolons, tabs). The bare
+`pd.read_csv()` calls throughout the pipeline would crash on such files
+with cryptic `UnicodeDecodeError` messages.
+
+**Decision:** Introduce `csv_utils.py` with `read_csv_robust()` that tries
+four encodings (utf-8, utf-8-sig, cp1252, latin-1) and three delimiters
+(comma, semicolon, tab) using `csv.Sniffer` where possible. Returns a
+structured `CsvReadResult` with diagnostics. Replace all bare `pd.read_csv()`
+calls in `readers.py`, `file_profiler.py` (both CSV profiling and ZIP inner
+CSV inspection) with `read_csv_robust()`.
+
+**Consequences:**
+- CP1252/Latin-1 CSVs and semicolon/tab-delimited files now parse correctly.
+- Non-default encodings and delimiters surface as informational warnings.
+- Existing UTF-8/comma CSV imports are unaffected (first candidate wins).
+- One central function for all CSV I/O — easier to extend with new encodings.
+
+## ADR 017: Northwind adapter price derivation from products sheet (Phase 6A)
+
+**Context:** Northwind-style order details sheets often lack a price column
+(the Frostonline variant has `OrderID`, `ProductID`, `Quantity` only). The
+adapter was defaulting `unit_price_cents` to 0, which fails the positive-value
+validator.
+
+**Decision:** When no price column is found in order details, join
+`ordersdetails.ProductID` → `products.ProductID` to derive prices from the
+products sheet. Build a lookup dict, map through it, convert dollars to cents.
+Report match statistics in warnings. Fall back to 0 only when the products
+sheet itself has no price column.
+
+**Consequences:**
+- Northwind workbooks without detail-level prices can be imported.
+- The adapter plan explicitly states "prices will be derived from products
+  sheet via ProductID join" so users see the assumption.
+- Match statistics (N/M items matched) give confidence in the derivation.
+
+## ADR 018: Multi-file assembly workspace for Order Reporting (Phase 6A)
+
+**Context:** Order Reporting requires five entity files, but users often have
+data split across separate files (e.g. `customers.csv` from CRM, `orders.csv`
+from ERP). Uploading one file at a time was a dead end — each upload was
+evaluated independently and reported as "partial, missing 4 entities".
+
+**Decision:** Introduce `assembly_workspace.py` — a session-state-backed
+staging area where users collect partial files one by one. Each staged file
+is bound to a detected entity. The workspace tracks coverage (covered vs.
+missing entities), importability (minimum: orders + order_items + products),
+and readiness labels. When ready, `build_assembled_frames()` re-reads all
+staged bytes via `read_csv_robust()` and feeds them to `import_adapted_frames()`.
+
+**Consequences:**
+- Users can assemble a complete dataset from separate files across uploads.
+- Coverage progress (N/5 entities, progress bar) gives clear feedback.
+- Minimum import threshold allows partial datasets (customers/categories
+  can be synthesized downstream if needed).
+- Session-state scoping means the workspace is per-browser-tab, no persistence.
+
+## ADR 019: Reference file classification (Phase 6A)
+
+**Context:** When a user uploads a file like `data_dictionary.csv` or
+`employees.csv`, the profiler classified it as "preview only" with a generic
+message. This felt like a failure when it should be recognized as a known
+auxiliary file that simply isn't part of the reporting model.
+
+**Decision:** Add `_classify_reference_file()` to the file profiler. It
+checks the filename stem against two known sets: `_METADATA_STEMS` (data
+dictionaries, changelogs, readmes) and `_AUXILIARY_STEMS` (employees,
+shippers, suppliers, regions, territories, demographics). Sets
+`file_category` on the FileProfile ("metadata", "auxiliary", "unknown").
+
+**Consequences:**
+- Known reference files get labeled with contextual messages instead of
+  generic "preview only" noise.
+- Auxiliary Northwind tables (employees, shippers) are recognized as
+  intentionally excluded from the reporting model.
+- Unknown files still get "preview only" with honest messaging.

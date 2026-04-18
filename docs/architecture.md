@@ -53,12 +53,14 @@ This project is intentionally small, but structured like production code.
 - **flat_metric_model.py** — Defines the flat-metric entity (entity, metric_name, metric_value, year, score, rank). Supports "float" dtype.
 - **flat_metric_queries.py** — SQL queries for the flat-metric dashboard — KPIs, rankings, comparison, trend, detail with parameterised filter builder. Rankings and comparison use snapshot semantics: one row per entity via `DISTINCT ON` (latest year) or an explicit `snapshot_year` parameter. `resolve_snapshot_year()` determines the year to use based on filter state.
 - **importer.py** — High-level orchestrator: `import_csv_bundle()` / `import_excel_workbook()` / `import_adapted_frames()`. Calls readers → validators → normalizers → loader. Also handles adapter-produced frames via `import_adapted_frames()` which routes to the appropriate pipeline based on profile family.
-- **file_profiler.py** — `profile_file(name, buf)` inspects CSV/XLSX/ZIP uploads and returns a `FileProfile` with file type, tabular assets (columns, samples, inferred types), detected profile family, suggested adapter name, importability status (FULL_IMPORT / ADAPTER_IMPORT / PREVIEW_ONLY / PARTIAL_DATASET / UNSUPPORTED), and guidance. Heuristics detect canonical order sheets, Northwind-style workbooks, flat-metric long/wide formats, partial order entities, and ZIP-bundled CSV sets.
+- **file_profiler.py** — `profile_file(name, buf)` inspects CSV/XLSX/ZIP uploads and returns a `FileProfile` with file type, tabular assets (columns, samples, inferred types), detected profile family, suggested adapter name, importability status (FULL_IMPORT / ADAPTER_IMPORT / PREVIEW_ONLY / PARTIAL_DATASET / UNSUPPORTED), and guidance. Heuristics detect canonical order sheets, Northwind-style workbooks, flat-metric long/wide formats, partial order entities, and ZIP-bundled CSV sets. Reports encoding, delimiter, detected entity, and file category (metadata / auxiliary / unknown) for each profiled file. Uses encoding-resilient CSV reading via `csv_utils`.
+- **csv_utils.py** — `read_csv_robust(buf, nrows=None)` → `CsvReadResult`. Tries four encodings (utf-8, utf-8-sig, cp1252, latin-1) and three delimiters (comma, semicolon, tab) to parse real-world CSV files. Returns structured diagnostics (success, encoding, delimiter, warnings, error). Used by readers, file profiler, and assembly workspace.
+- **assembly_workspace.py** — Session-state-backed multi-file staging for Order Reporting dataset construction. `StagedFile` tracks each staged entity; `AssemblyWorkspace` tracks coverage (covered/missing entities), importability (minimum: orders + order_items + products), and readiness labels. Functions: `get_workspace()`, `stage_file()`, `unstage_entity()`, `clear_workspace()`, `build_assembled_frames()`.
 - **adapters/** — Adapter registry package. `BaseAdapter` ABC with `can_handle()` / `plan()` / `transform()`. `AdapterPlan` describes field mappings, assumptions, ignored sheets before transformation. `AdapterResult` carries success/failure, canonical frames, and warnings.
   - `adapters/canonical.py` — Four pass-through adapters wrapping existing readers for canonical formats.
-  - `adapters/northwind_order.py` — Northwind-style order workbook → canonical Order Reporting. Resolves IDs to names via companion sheets, maps column aliases, converts dollar prices to cents, defaults missing status to "completed", ignores employees/shippers/suppliers.
+  - `adapters/northwind_order.py` — Northwind-style order workbook → canonical Order Reporting. Resolves IDs to names via companion sheets, maps column aliases, converts dollar prices to cents, derives missing order-item prices from the products sheet via ProductID join, defaults missing status to "completed", ignores employees/shippers/suppliers.
   - `adapters/wide_flat_metric.py` — Wide flat-metric table → canonical long format via `pd.melt()`. Detects entity/year/rank/score columns, melts remaining numeric columns into metric rows.
-- **readers.py** — `read_csv_bundle(files)` and `read_excel_workbook(buf)` return `dict[str, DataFrame]`.
+- **readers.py** — `read_csv_bundle(files)` and `read_excel_workbook(buf)` return `dict[str, DataFrame]`. CSV reading uses encoding-resilient `read_csv_robust()` from `csv_utils`.
 - **validators.py** — Schema checks, null/type/positive-value checks, cross-entity referential integrity.
 - **normalizers.py** — Column name cleanup, Int64/date/text coercion per canonical spec. Pure functions.
 - **loader.py** — Atomic TRUNCATE + reload into the five reporting tables, respecting FK order.
@@ -95,6 +97,8 @@ validators.py       ← Schema + referential validation (parameterised)
 normalizers.py      ← Type coercion (Int64, float64, dates, text)
 loader.py           ← Atomic TRUNCATE + reload into Postgres (both profiles)
 file_profiler.py    ← File inspection → FileProfile (type, assets, classification)
+csv_utils.py        ← Encoding-resilient CSV reader (4 encodings × 3 delimiters)
+assembly_workspace.py ← Multi-file staging for Order Reporting assembly
 adapters/
   __init__.py       ← Adapter registry (BaseAdapter, register, find, load_all)
   canonical.py      ← Pass-through adapters for canonical formats

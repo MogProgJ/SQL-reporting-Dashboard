@@ -84,6 +84,66 @@ The sidebar includes downloadable example templates (CSV zip and Excel
 workbook) that contain sample data matching the required format. Download
 one, replace the sample rows with your own data, and import.
 
+## Encoding and delimiter support
+
+CSV files do not need to be UTF-8 with comma delimiters. The import pipeline
+tries four encodings and three delimiters automatically:
+
+| Encoding  | Notes |
+|-----------|-------|
+| UTF-8     | Default, tried first |
+| UTF-8 BOM | Windows-exported CSVs with `\xEF\xBB\xBF` byte-order mark |
+| CP1252    | Common Windows encoding (curly quotes, accented characters) |
+| Latin-1   | ISO 8859-1 fallback for Western European characters |
+
+| Delimiter  | Notes |
+|------------|-------|
+| Comma (`,`)    | Default, tried first |
+| Semicolon (`;`) | Common in European CSV exports |
+| Tab (`\t`)     | TSV files with `.csv` extension |
+
+When a non-default encoding or delimiter is detected, the Smart Upload
+panel shows an informational note (e.g. "Encoding: cp1252" or
+"Delimiter: semicolon").
+
+## Northwind-style workbooks
+
+Excel workbooks with Northwind-style structure (sheets like `customers`,
+`categories`, `products`, `orders`, `ordersdetails`) are auto-detected.
+The adapter handles:
+
+- **Column aliasing** — `CustomerName` → `name`, `OrderDate` → `created_at`, etc.
+- **ID resolution** — `CustomerID`, `ProductID`, `CategoryID` are resolved to
+  display names via companion sheets.
+- **Price derivation** — If order details lacks a price column, unit prices
+  are derived from the products sheet via `ProductID` join.
+- **Dollar-to-cents conversion** — Dollar values are multiplied by 100.
+- **Default status** — Missing `status` column defaults to `"completed"`.
+
+## Multi-file assembly
+
+When individual partial files are uploaded (e.g. just `customers.csv`),
+Smart Upload detects the entity and offers a **Stage** button. Staged files
+accumulate in an **Assembly Workspace** panel that shows:
+
+- Coverage progress (N/5 entities, with a progress bar)
+- Which required entities are still missing
+- Remove buttons per staged entity
+- An **Import** button once the minimum required entities are present
+
+Minimum required entities: `orders`, `order_items`, `products`.
+Optional entities (`customers`, `categories`) can be synthesized if absent.
+
+## Reference and auxiliary files
+
+Files that don't match the reporting model are classified:
+
+| Category | Example files | Behaviour |
+|----------|--------------|-----------|
+| **Metadata** | `data_dictionary.csv`, `readme.csv` | Preview only, labeled as metadata |
+| **Auxiliary** | `employees.csv`, `shippers.csv`, `suppliers.csv` | Preview only, labeled as auxiliary (Northwind tables excluded from reporting model) |
+| **Unknown** | `random_data.csv` | Preview only, generic message |
+
 ## Validation
 
 The import pipeline validates your data before loading:
@@ -111,7 +171,10 @@ to fix. Warnings (e.g. blank text fields) do not block the import.
   (TRUNCATE + reload). There is no merge or append mode.
 - **No auth.** Any user can import data. There is no access control.
 - **Money in cents.** All monetary values must be in cents (integers), not
-  dollars. The dashboard converts to dollars for display.
+  dollars. The dashboard converts to dollars for display. Northwind-style
+  dollar values are auto-converted by the adapter.
+- **Assembly workspace is session-scoped.** Staged files are lost if the
+  browser tab is closed. There is no server-side persistence.
 
 ## Common errors
 

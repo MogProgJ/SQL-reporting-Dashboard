@@ -136,13 +136,26 @@ def _show_import_result(result) -> None:
 
 
 def _render_smart_upload() -> None:
-    """Smart Upload — profile, preview, and adapt uploaded files."""
+    """Smart Upload — profile, preview, adapt, or stage uploaded files."""
     from io import BytesIO
 
     from adapters import find_adapter, load_all_adapters
-    from file_profiler import Importability, profile_file
+    from assembly_workspace import (
+        build_assembled_frames,
+        clear_workspace,
+        get_workspace,
+        stage_file,
+        unstage_entity,
+    )
+    from csv_utils import read_csv_robust
+    from file_profiler import Importability, ProfileFamily, profile_file
 
     load_all_adapters()
+
+    # ── Assembly workspace status (always visible if non-empty) ──
+    ws = get_workspace()
+    if ws.staged:
+        _render_assembly_workspace(ws)
 
     uploaded = st.file_uploader(
         "Upload any CSV, Excel, or ZIP file",
@@ -156,7 +169,8 @@ def _render_smart_upload() -> None:
         )
         return
 
-    buf = BytesIO(uploaded.getvalue())
+    raw_bytes = uploaded.getvalue()
+    buf = BytesIO(raw_bytes)
     profile = profile_file(uploaded.name, buf)
 
     # Store in session for the preview panel
@@ -173,6 +187,22 @@ def _render_smart_upload() -> None:
     icon, label = _BADGE.get(profile.importability, ("❓", "Unknown"))
     st.markdown(f"**{icon} {label}**")
     st.caption(profile.confidence)
+
+    # Encoding/delimiter diagnostics
+    if profile.encoding and profile.encoding != "utf-8":
+        st.info(f"📝 Encoding: {profile.encoding}", icon="📝")
+    if profile.delimiter and profile.delimiter != ",":
+        delim_name = {";": "semicolon", "\t": "tab"}.get(profile.delimiter, repr(profile.delimiter))
+        st.info(f"📝 Delimiter: {delim_name}", icon="📝")
+
+    # File category for preview-only files
+    if profile.importability == Importability.PREVIEW_ONLY and profile.file_category:
+        cat_labels = {
+            "metadata": "📋 Metadata / reference file",
+            "auxiliary": "📦 Auxiliary business table",
+            "unknown": "❓ Unrecognised format",
+        }
+        st.caption(cat_labels.get(profile.file_category, profile.file_category))
 
     # Warnings
     for w in profile.warnings:
@@ -199,7 +229,34 @@ def _render_smart_upload() -> None:
             for entry in profile.archive_entries[:30]:
                 st.text(entry)
 
-    # Adapter plan + import
+    # ── Partial dataset → offer staging ──────────────────────
+    if (
+        profile.importability == Importability.PARTIAL_DATASET
+        and profile.profile_family == ProfileFamily.ORDER_REPORTING
+        and profile.detected_entity
+    ):
+        entity = profile.detected_entity
+        st.markdown(f"**Detected as:** `{entity}`")
+
+        if entity in ws.staged:
+            st.caption(f"'{entity}' already staged (from {ws.staged[entity].filename}). Staging again will replace it.")
+
+        if st.button(
+            f"📌 Stage as '{entity}'",
+            use_container_width=True,
+            key="stage_partial_btn",
+        ):
+            # Read the full file for staging
+            buf.seek(0)
+            csv_result = read_csv_robust(buf)
+            if csv_result.success and csv_result.df is not None:
+                stage_file(uploaded.name, entity, profile, raw_bytes, csv_result.df)
+                st.success(f"Staged '{uploaded.name}' as **{entity}**.")
+                st.rerun()
+            else:
+                st.error(f"Could not read file for staging: {csv_result.error}")
+
+    # ── Adapter plan + import ────────────────────────────────
     if profile.suggested_adapter:
         adapter = find_adapter(profile)
         if adapter:
@@ -239,6 +296,63 @@ def _render_smart_upload() -> None:
                                 label=uploaded.name,
                             )
                         _show_import_result(result)
+
+
+def _render_assembly_workspace(ws) -> None:
+    """Render the Order Reporting assembly workspace summary."""
+    from assembly_workspace import clear_workspace, unstage_entity
+
+    st.markdown("---")
+    st.markdown("### 🗂️ Assembly Workspace")
+    st.caption(ws.readiness_label)
+
+    covered, total = ws.coverage_fraction
+    st.progress(covered / total if total else 0)
+
+    # Staged files
+    for entity, sf in sorted(ws.staged.items()):
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown(f"**{entity}** ← _{sf.filename}_ ({sf.row_count} rows)")
+        with col2:
+            if st.button("✕", key=f"unstage_{entity}", help=f"Remove {entity}"):
+                unstage_entity(entity)
+                st.rerun()
+
+    # Missing entities
+    if ws.missing_entities:
+        missing_label = ", ".join(sorted(ws.missing_entities))
+        if ws.missing_required:
+            st.warning(f"Still needed: **{', '.join(sorted(ws.missing_required))}**")
+        st.caption(f"All missing: {missing_label}")
+
+    # Import button
+    if ws.is_importable:
+        if st.button("⬆️ Import assembled dataset", use_container_width=True, key="assembly_import_btn"):
+            from assembly_workspace import build_assembled_frames
+
+            try:
+                with st.spinner("Reading staged files…"):
+                    frames = build_assembled_frames()
+                with st.spinner("Importing into database…"):
+                    result = import_adapted_frames(
+                        frames=frames,
+                        profile_family="order_reporting",
+                        adapter_name="multi_file_assembly",
+                        label="Assembled dataset",
+                    )
+                _show_import_result(result)
+                if result.success:
+                    clear_workspace()
+            except Exception as exc:
+                st.error(f"Assembly import failed: {exc}")
+
+    # Clear workspace
+    if st.button("🗑️ Clear workspace", use_container_width=True, key="clear_ws_btn"):
+        clear_workspace()
+        st.rerun()
+
+    st.markdown("---")
 
 
 # ── Profile-not-ready UI helpers ────────────────────────────────

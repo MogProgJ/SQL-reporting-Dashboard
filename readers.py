@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from canonical_model import CANONICAL_ENTITIES
+from csv_utils import read_csv_robust
 
 # Entity names the readers look for (order-reporting profile).
 _ENTITY_NAMES = {e.name for e in CANONICAL_ENTITIES}
@@ -49,11 +50,22 @@ def read_csv_bundle(
     Raises ``ReaderError`` if no recognised files are found.
     """
     frames: dict[str, pd.DataFrame] = {}
+    read_warnings: list[str] = []
     for filename, buf in files.items():
         stem = Path(filename).stem.lower()
         if stem in _ENTITY_NAMES:
             buf.seek(0)
-            frames[stem] = pd.read_csv(buf)
+            csv_result = read_csv_robust(BytesIO(buf.read()) if not isinstance(buf, BytesIO) else buf)
+            if csv_result.success and csv_result.df is not None:
+                frames[stem] = csv_result.df
+                read_warnings.extend(
+                    f"{filename}: {w}" for w in csv_result.warnings
+                )
+            else:
+                raise ReaderError(
+                    summary=f"Could not parse '{filename}'.",
+                    detail=csv_result.error or "Unknown CSV parse failure.",
+                )
 
     if not frames:
         provided = sorted(Path(f).stem.lower() for f in files)
@@ -167,7 +179,15 @@ def read_flat_metric_csv(buf: BytesIO) -> dict[str, pd.DataFrame]:
     """
     try:
         buf.seek(0)
-        df = pd.read_csv(buf)
+        csv_result = read_csv_robust(buf)
+        if not csv_result.success or csv_result.df is None:
+            raise ReaderError(
+                summary="Could not parse flat-metric CSV.",
+                detail=csv_result.error or "Unknown CSV parse failure.",
+            )
+        df = csv_result.df
+    except ReaderError:
+        raise
     except Exception as exc:
         raise ReaderError(
             summary="Could not parse the uploaded CSV file.",

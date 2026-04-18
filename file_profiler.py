@@ -16,6 +16,8 @@ from typing import Any
 
 import pandas as pd
 
+from csv_utils import read_csv_robust
+
 
 # ── Enums ───────────────────────────────────────────────────────
 
@@ -73,6 +75,7 @@ class FileProfile:
 
     # Partial-dataset info
     missing_entities: list[str] = field(default_factory=list)
+    detected_entity: str = ""  # canonical entity this file maps to
 
     # Warnings / guidance
     warnings: list[str] = field(default_factory=list)
@@ -80,6 +83,13 @@ class FileProfile:
 
     # Archive contents (for ZIP)
     archive_entries: list[str] = field(default_factory=list)
+
+    # CSV parse diagnostics
+    encoding: str = ""
+    delimiter: str = ""
+
+    # Reference classification (for preview-only files)
+    file_category: str = ""  # "metadata" | "auxiliary" | "unknown" | ""
 
 
 # ── Internal helpers ────────────────────────────────────────────
@@ -154,33 +164,79 @@ def _detect_fm_wide_columns(col_names_lower: set[str], df: pd.DataFrame) -> bool
     return len(numeric_cols) >= 3
 
 
-def _detect_partial_order_csv(col_names_lower: set[str]) -> list[str]:
-    """If columns resemble a single order entity, return missing entities."""
+def _detect_partial_order_csv(col_names_lower: set[str]) -> tuple[str, list[str]]:
+    """If columns resemble a single order entity, return (entity, missing_entities).
+
+    Returns ("", []) if no match.
+    """
     # order_items heuristic
     item_hints = {"order_id", "product", "quantity", "unit_price", "unitprice",
                   "unit_price_cents", "productid", "orderid"}
     if len(item_hints & col_names_lower) >= 2:
-        return sorted(_ORDER_ENTITY_NAMES - {"order_items"})
+        return "order_items", sorted(_ORDER_ENTITY_NAMES - {"order_items"})
 
     # orders heuristic
     order_hints = {"order_id", "orderid", "customer", "customerid",
                    "status", "created_at", "orderdate", "order_date"}
     if len(order_hints & col_names_lower) >= 2:
-        return sorted(_ORDER_ENTITY_NAMES - {"orders"})
+        return "orders", sorted(_ORDER_ENTITY_NAMES - {"orders"})
 
     # customers heuristic
     cust_hints = {"customer", "customername", "customer_name", "segment",
                   "city", "companyname", "company_name", "contactname"}
     if len(cust_hints & col_names_lower) >= 2:
-        return sorted(_ORDER_ENTITY_NAMES - {"customers"})
+        return "customers", sorted(_ORDER_ENTITY_NAMES - {"customers"})
 
     # products heuristic
     prod_hints = {"product", "productname", "product_name", "category",
-                  "unit_price", "unitprice", "unit_price_cents", "price"}
+                  "unit_price", "unitprice", "unit_price_cents", "price",
+                  "categoryname", "category_name", "categoryid"}
     if len(prod_hints & col_names_lower) >= 2:
-        return sorted(_ORDER_ENTITY_NAMES - {"products"})
+        return "products", sorted(_ORDER_ENTITY_NAMES - {"products"})
 
-    return []
+    # categories heuristic
+    cat_hints = {"categoryname", "category_name", "category",
+                 "categoryid", "category_id", "description"}
+    if len(cat_hints & col_names_lower) >= 2:
+        return "categories", sorted(_ORDER_ENTITY_NAMES - {"categories"})
+
+    return "", []
+
+
+# ── Reference / metadata classification ─────────────────────────
+
+# Known metadata/reference file stems (not useful for dashboards but readable)
+_METADATA_STEMS = {"data_dictionary", "datadictionary", "metadata", "readme",
+                   "changelog", "license", "notes"}
+_AUXILIARY_STEMS = {"employees", "shippers", "suppliers", "regions",
+                    "territories", "demographics"}
+
+
+def _classify_reference_file(
+    fp: FileProfile, stem: str, cols_lower: set[str],
+) -> None:
+    """Enrich a PREVIEW_ONLY profile with reference/metadata classification."""
+    if stem in _METADATA_STEMS:
+        fp.file_category = "metadata"
+        fp.confidence = "Metadata or reference file — readable but not dashboard data."
+        fp.suggestions.append(
+            "This looks like metadata/documentation. It can be previewed but "
+            "is not used by any analytics profile."
+        )
+    elif stem in _AUXILIARY_STEMS:
+        fp.file_category = "auxiliary"
+        fp.confidence = (
+            f"Auxiliary business table ('{stem}') — readable but not required "
+            "for current dashboards."
+        )
+        fp.suggestions.append(
+            f"The '{stem}' table is not required by Order Reporting or Flat Metric profiles. "
+            "It may be useful in future analytics expansions."
+        )
+    else:
+        fp.file_category = "unknown"
+        fp.confidence = "Readable CSV but does not match a known format."
+        fp.suggestions.append("You can preview this file but it cannot be imported directly.")
 
 
 # ── Public API ──────────────────────────────────────────────────
@@ -216,14 +272,21 @@ def _profile_csv(filename: str, buf: BytesIO, size: int) -> FileProfile:
     """Profile a single CSV file."""
     fp = FileProfile(filename=filename, file_type=FileType.CSV, size_bytes=size)
 
-    try:
-        buf.seek(0)
-        df = pd.read_csv(buf, nrows=200)
-    except Exception as exc:
-        fp.warnings.append(f"Could not parse CSV: {exc}")
+    buf.seek(0)
+    csv_result = read_csv_robust(buf, nrows=200)
+
+    if not csv_result.success or csv_result.df is None:
+        fp.warnings.append(csv_result.error or "Could not parse CSV.")
         fp.importability = Importability.UNSUPPORTED
-        fp.confidence = "File could not be parsed as CSV."
+        fp.confidence = "File could not be parsed as CSV with any supported encoding."
         return fp
+
+    df = csv_result.df
+    fp.warnings.extend(csv_result.warnings)
+
+    # Store parse diagnostics on the profile
+    fp.encoding = csv_result.encoding
+    fp.delimiter = csv_result.delimiter
 
     cols_lower = {str(c).strip().lower() for c in df.columns}
     asset = _build_asset(Path(filename).stem, df)
@@ -242,6 +305,7 @@ def _profile_csv(filename: str, buf: BytesIO, size: int) -> FileProfile:
     if stem in _ORDER_ENTITY_NAMES:
         fp.profile_family = ProfileFamily.ORDER_REPORTING
         fp.importability = Importability.PARTIAL_DATASET
+        fp.detected_entity = stem
         fp.missing_entities = sorted(_ORDER_ENTITY_NAMES - {stem})
         fp.confidence = f"Matches order entity '{stem}' but a full import needs all 5 entities."
         fp.suggestions.append(
@@ -250,12 +314,13 @@ def _profile_csv(filename: str, buf: BytesIO, size: int) -> FileProfile:
         return fp
 
     # Partial order heuristic (column-based)?
-    missing = _detect_partial_order_csv(cols_lower)
-    if missing:
+    detected, missing = _detect_partial_order_csv(cols_lower)
+    if detected:
         fp.profile_family = ProfileFamily.ORDER_REPORTING
         fp.importability = Importability.PARTIAL_DATASET
+        fp.detected_entity = detected
         fp.missing_entities = missing
-        fp.confidence = "Columns resemble order-related data but this is only one entity."
+        fp.confidence = f"Columns resemble '{detected}' entity from Order Reporting."
         fp.suggestions.append(
             "A full Order Reporting dashboard also needs: " + ", ".join(missing)
         )
@@ -269,10 +334,9 @@ def _profile_csv(filename: str, buf: BytesIO, size: int) -> FileProfile:
         fp.confidence = "Looks like a wide flat-metric table with entity column and numeric metrics."
         return fp
 
-    # Fallback: preview-only
+    # Fallback: classify reference/metadata vs truly unknown
     fp.importability = Importability.PREVIEW_ONLY
-    fp.confidence = "Readable CSV but does not match a known format."
-    fp.suggestions.append("You can preview this file but it cannot be imported directly.")
+    _classify_reference_file(fp, stem, cols_lower)
     return fp
 
 
@@ -392,8 +456,10 @@ def _profile_zip(filename: str, buf: BytesIO, size: int) -> FileProfile:
             for cf in csv_files:
                 try:
                     with zf.open(cf) as inner:
-                        df = pd.read_csv(inner, nrows=50)
-                        fp.assets.append(_build_asset(Path(cf).stem, df))
+                        inner_buf = BytesIO(inner.read())
+                        csv_r = read_csv_robust(inner_buf, nrows=50)
+                        if csv_r.success and csv_r.df is not None:
+                            fp.assets.append(_build_asset(Path(cf).stem, csv_r.df))
                 except Exception:
                     pass
             return fp
@@ -404,10 +470,14 @@ def _profile_zip(filename: str, buf: BytesIO, size: int) -> FileProfile:
                 with zf.open(entry) as inner:
                     inner_buf = BytesIO(inner.read())
                     if entry.lower().endswith(".csv"):
-                        df = pd.read_csv(inner_buf, nrows=200)
+                        csv_r = read_csv_robust(inner_buf, nrows=200)
+                        if csv_r.success and csv_r.df is not None:
+                            fp.assets.append(_build_asset(entry, csv_r.df))
+                        else:
+                            fp.warnings.append(f"Could not read '{entry}' from archive.")
                     else:
                         df = pd.read_excel(inner_buf, engine="openpyxl", nrows=200)
-                    fp.assets.append(_build_asset(entry, df))
+                        fp.assets.append(_build_asset(entry, df))
             except Exception:
                 fp.warnings.append(f"Could not read '{entry}' from archive.")
 
