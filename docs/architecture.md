@@ -9,9 +9,153 @@ This project is intentionally small, but structured like production code.
 - A database schema that matches real workflows
 
 ## Layers
-- API layer: controllers or UI
-- Service layer: business rules
-- Data layer: repositories and SQL
-- Docs: schema and usage examples
 
-As the project grows, this file will track decisions and tradeoffs.
+```
+┌───────────────────────────────┐
+│  app.py  (Streamlit UI)       │  Tabs, Plotly charts, data-source switcher
+├───────────────────┬───────────┤
+│  formatters.py    │ importer  │  Display helpers │ Import orchestrator
+├───────────────────┤  .py      │
+│  queries.py       ├───────────┤
+│                   │file_      │  Inspect files → FileProfile
+│                   │profiler.py│  (type, assets, classification)
+│                   ├───────────┤
+│                   │adapters/  │  Transform near-match formats
+│                   │  registry │  into canonical DataFrames
+│                   │  northwind│
+│                   │  wide_fm  │
+│                   ├───────────┤
+│                   │ readers   │  CSV / Excel → DataFrames
+│                   │ validators│  Schema + referential checks
+│                   │ normaliz… │  Type coercion
+│                   │ loader.py │  Atomic DB reload
+├───────────────────┴───────────┤
+│  db.py                        │  Connection helper (psycopg2 + DATABASE_URL)
+├───────────────────────────────┤
+│  PostgreSQL (Docker)          │  customers … order_items + flat_metrics
+└───────────────────────────────┘
+```
+
+- **profile_state.py** — Profile readiness checks. Queries `information_schema.tables` to determine if a profile's backing tables exist and contain data. Returns `ProfileReadiness` (status, present/missing tables, row counts). Used by `app.py` to gate rendering.
+- **app.py** — Thin orchestrator. Sidebar has four clearly separated sections: (1) **Active Dataset** — shows current data provenance and row counts, (2) **Import Data** — Smart Upload, CSV bundle, or Excel workbook with guided flow, (3) **Filters** — profile-specific sidebar filters, (4) **Saved Views** — save/load/delete views and demo presets. Runs readiness check before rendering; routes to summary dashboards or deep-dive pages based on nav state. Delegates rendering to `dashboard_order.py`, `dashboard_flat_metric.py`, or the five `page_*` modules.
+- **dashboard_order.py** — Order-profile summary dashboard: 4 tabs (Overview, Breakdown, Outliers, Detail & Export). Plotly charts, `st.column_config` formatting. Includes navigation hooks to drill into customer/product detail.
+- **dashboard_flat_metric.py** — Flat-metric summary dashboard: 3 tabs (Rankings, Trends, Detail & Export). Horizontal bar chart, line chart, ranking table. Includes navigation hooks to drill into entity/metric detail.
+- **nav_state.py** — Lightweight session-state navigation. Per-profile page enums (`OrderPage`, `FlatMetricPage`), page/target state in `st.session_state`, sidebar selectbox, back button. `get_page()` validates against the active profile's enum to prevent stale cross-profile page values.
+- **page_fm_entity.py** — Flat Metric Entity Detail deep-dive: KPIs, time trend (metric selector), metric comparison bar chart, full data export.
+- **page_fm_metric.py** — Flat Metric Metric Explorer deep-dive: top/bottom entity rankings, average trend over time, IQR outlier detection, full data export.
+- **page_order_customer.py** — Order Customer Detail deep-dive: revenue and volume trends, product mix, full order-item table with export.
+- **page_order_product.py** — Order Product Detail deep-dive: revenue and units trends, top customers, full order-item table with export.
+- **page_order_anomaly.py** — Order Anomaly Explorer deep-dive: IQR-flagged large orders, high-revenue days with threshold display, raw data export.
+- **formatters.py** — Pure display helpers: `cents_to_dollars`, `fmt_number`, `fmt_pct`, `add_rank`. Tested independently.
+- **queries.py** — All SQL lives here. Functions accept filter kwargs and return DataFrames. Parameterized queries prevent injection. Includes IQR-based anomaly helpers.
+- **db.py** — Thin connection wrapper around `psycopg2`. Reads `DATABASE_URL` from `.env`. Also provides `table_exists()` helper via `information_schema`.
+- **canonical_model.py** — Defines the five canonical order-profile entities (columns, types, natural keys).
+- **flat_metric_model.py** — Defines the flat-metric entity (entity, metric_name, metric_value, year, score, rank). Supports "float" dtype.
+- **flat_metric_queries.py** — SQL queries for the flat-metric dashboard — KPIs, rankings, comparison, trend, detail with parameterised filter builder. Rankings and comparison use snapshot semantics: one row per entity via `DISTINCT ON` (latest year) or an explicit `snapshot_year` parameter. `resolve_snapshot_year()` determines the year to use based on filter state.
+- **importer.py** — High-level orchestrator: `import_csv_bundle()` / `import_excel_workbook()` / `import_adapted_frames()`. Calls readers → validators → normalizers → loader. Also handles adapter-produced frames via `import_adapted_frames()` which routes to the appropriate pipeline based on profile family.
+- **file_profiler.py** — `profile_file(name, buf)` inspects CSV/XLSX/ZIP uploads and returns a `FileProfile` with file type, tabular assets (columns, samples, inferred types), detected profile family, suggested adapter name, importability status (FULL_IMPORT / ADAPTER_IMPORT / PREVIEW_ONLY / PARTIAL_DATASET / UNSUPPORTED), and guidance. Heuristics detect canonical order sheets, Northwind-style workbooks, flat-metric long/wide formats, partial order entities, and ZIP-bundled CSV sets. Reports encoding, delimiter, detected entity, and file category (metadata / auxiliary / unknown) for each profiled file. Uses encoding-resilient CSV reading via `csv_utils`.
+- **csv_utils.py** — `read_csv_robust(buf, nrows=None)` → `CsvReadResult`. Tries four encodings (utf-8, utf-8-sig, cp1252, latin-1) and three delimiters (comma, semicolon, tab) to parse real-world CSV files. Returns structured diagnostics (success, encoding, delimiter, warnings, error). Used by readers, file profiler, and assembly workspace.
+- **assembly_workspace.py** — Session-state-backed multi-file staging for Order Reporting dataset construction. `StagedFile` tracks each staged entity; `AssemblyWorkspace` tracks coverage (covered/missing entities), importability (minimum: orders + order_items + products), and readiness labels. Functions: `get_workspace()`, `stage_file()`, `unstage_entity()`, `clear_workspace()`, `build_assembled_frames()`.
+- **adapters/** — Adapter registry package. `BaseAdapter` ABC with `can_handle()` / `plan()` / `transform()`. `AdapterPlan` describes field mappings, assumptions, ignored sheets before transformation. `AdapterResult` carries success/failure, canonical frames, and warnings.
+  - `adapters/canonical.py` — Four pass-through adapters wrapping existing readers for canonical formats.
+  - `adapters/northwind_order.py` — Northwind-style order workbook → canonical Order Reporting. Resolves IDs to names via companion sheets, maps column aliases, converts dollar prices to cents, derives missing order-item prices from the products sheet via ProductID join, defaults missing status to "completed", ignores employees/shippers/suppliers.
+  - `adapters/wide_flat_metric.py` — Wide flat-metric table → canonical long format via `pd.melt()`. Detects entity/year/rank/score columns, melts remaining numeric columns into metric rows.
+- **readers.py** — `read_csv_bundle(files)` and `read_excel_workbook(buf)` return `dict[str, DataFrame]`. CSV reading uses encoding-resilient `read_csv_robust()` from `csv_utils`.
+- **validators.py** — Schema checks, null/type/positive-value checks, cross-entity referential integrity.
+- **normalizers.py** — Column name cleanup, Int64/date/text coercion per canonical spec. Pure functions.
+- **loader.py** — Atomic TRUNCATE + reload into the five reporting tables, respecting FK order.
+- **saved_views.py** — SavedView dataclass model with JSON-file persistence. `capture_current_state()` serialises the active session (profile, page, target, filters). `apply_view()` schedules a view for restoration via a deferred "pending view" pattern — the view is stashed in `_pending_view` session state, and `flush_pending_view()` applies all state keys *before* any widgets are instantiated on the next rerun, preventing Streamlit's widget-key mutation error. Views stored as individual JSON files under `saved_views/`.
+- **ingestion_state.py** — Session-scoped `ActiveDataset` model tracking import provenance (source type, label, row counts, timestamp). `activate_from_result()` stores an active dataset on successful import. `get_active_dataset()` retrieves it for sidebar display. Keeps "what's loaded" separate from "what's being staged".
+- **report_pack.py** — Profile-aware JSON report-pack builder. `build_order_pack()` bundles KPIs, revenue trend, top-N customers/products, category breakdown, and detail slice. `build_fm_pack()` bundles KPIs, ranking, trend, and detail. Capped at 500 detail rows per pack.
+- **demo_presets.py** — Built-in preset saved views for showcase flows. Reuses the SavedView model with `is_preset=True`. Provides `get_presets(is_order)` for sidebar integration.
+- **dataset_profile.py** — Value types: `ProfileType`, `SourceType`, `ValidationIssue`, `ImportResult`, `DatasetProfile`.
+- **sql/kpis.sql** — Reference copy of key queries for manual testing / documentation.
+- **seed/seed.sql** — Idempotent script that creates the schema and inserts demo data.
+
+## File layout
+
+```
+profile_state.py    ← Profile readiness checks (table existence + row counts)
+app.py              ← Streamlit orchestrator (entry point, profile + page routing)
+nav_state.py        ← Session-state navigation (page enums, set/get page, back button)
+dashboard_order.py  ← Order-profile summary dashboard (4 tabs)
+dashboard_flat_metric.py ← Flat-metric summary dashboard (3 tabs)
+page_fm_entity.py   ← Flat Metric Entity Detail deep-dive
+page_fm_metric.py   ← Flat Metric Metric Explorer deep-dive
+page_order_customer.py ← Order Customer Detail deep-dive
+page_order_product.py  ← Order Product Detail deep-dive
+page_order_anomaly.py  ← Order Anomaly Explorer deep-dive
+formatters.py       ← Display helpers (currency, rank, %)
+db.py               ← Database connection helper
+queries.py          ← Order-profile query functions + customer/product detail + anomaly helpers
+flat_metric_queries.py ← Flat-metric query functions + entity/metric detail + filter builder
+canonical_model.py  ← Order entity/column specs (the import contract)
+flat_metric_model.py← Flat-metric entity spec
+dataset_profile.py  ← ProfileType, ImportResult, profile value types
+importer.py         ← Import orchestrator (CSV / Excel / adapted → DB, both profiles)
+readers.py          ← CSV bundle + Excel workbook + flat-metric readers
+validators.py       ← Schema + referential validation (parameterised)
+normalizers.py      ← Type coercion (Int64, float64, dates, text)
+loader.py           ← Atomic TRUNCATE + reload into Postgres (both profiles)
+file_profiler.py    ← File inspection → FileProfile (type, assets, classification)
+csv_utils.py        ← Encoding-resilient CSV reader (4 encodings × 3 delimiters)
+assembly_workspace.py ← Multi-file staging for Order Reporting assembly
+ingestion_state.py  ← Active dataset tracking + import provenance
+adapters/
+  __init__.py       ← Adapter registry (BaseAdapter, register, find, load_all)
+  canonical.py      ← Pass-through adapters for canonical formats
+  northwind_order.py← Northwind workbook → canonical order model
+  wide_flat_metric.py← Wide metric table → canonical long format
+saved_views.py      ← Saved-view model + JSON persistence + capture/apply
+report_pack.py      ← Profile-aware JSON report-pack builder (KPIs, tables, detail)
+demo_presets.py     ← Built-in preset views for demo/showcase flows
+requirements.txt        ← Runtime dependencies (pinned ranges)
+requirements-dev.txt    ← Dev/test dependencies
+Dockerfile              ← App container image (Python 3.11-slim, Streamlit)
+.dockerignore           ← Docker build exclusions
+docker-compose.yml      ← DB + optional app service (--profile app)
+.env.example
+scripts/
+  dev-up.ps1        ← One-command local bootstrap (PowerShell)
+  dev-reseed.ps1    ← Re-seed the database
+  dev-test.ps1      ← Run unit / integration / all tests
+  smoke_test.py     ← Verify DB connectivity + profile readiness
+seed/seed.sql       ← Schema + demo data
+sql/kpis.sql        ← Reference queries
+tests/
+  conftest.py       ← Shared pytest config + integration marker
+  test_*.py         ← Unit + integration test suites
+docs/
+  vision.md
+  roadmap.md
+  schema.md
+  importing-data.md
+  architecture.md
+  decisions.md
+```
+
+## Packaging & deployment
+
+```
+┌─────────────────────────────────────────────────┐
+│  docker compose --profile app up --build        │
+│  ┌──────────────┐   ┌────────────────────────┐  │
+│  │  db           │   │  app                   │  │
+│  │  postgres:16  │◄──│  python:3.11-slim      │  │
+│  │  port 5434    │   │  streamlit on :8501    │  │
+│  └──────────────┘   └────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+```
+
+- `docker compose up -d` — DB only (local Python dev).
+- `docker compose --profile app up --build` — DB + app.
+- The `app` service uses the `app` profile so it won't start by default.
+
+## CI
+
+GitHub Actions runs two jobs:
+
+1. **lint** — compile check + unit tests (no DB)
+2. **integration** — Postgres service container, seed, integration tests
+
+See `.github/workflows/ci.yml`.

@@ -1,80 +1,153 @@
 # SQL Reporting Dashboard
 
-> **Status:** Public build started on 2026-03-01. This repo is being developed in public from MVP onward.
+A lightweight analytics app that turns raw tabular data into clean dashboards.
 
-This project is a small reporting dashboard built on top of a relational database. The point is to turn raw tables into decision-friendly metrics: KPIs, trends, filters, and exports. It’s meant to be fast to run locally and easy to extend with new queries.
+It supports two analysis modes:
 
-The UI will be intentionally simple. The value is in the data model and the SQL.
+- **Order Reporting** — for order, customer, product, and category data
+- **Flat Metric** — for entity + metric style datasets such as country, year, value tables
 
-## Tech stack
-PostgreSQL (Docker)
-Python
-Streamlit (dashboard UI)
+The app is built to help you:
+- inspect uploaded files
+- detect their structure
+- import or adapt supported formats
+- explore the data through dashboards, drilldowns, filters, and exports
 
-## What it will show (MVP)
-A handful of business-style KPIs and drilldowns, such as:
-Revenue or volume over time
-Top customers or products
-Breakdowns by category
-A filtered table view
-CSV export for reports
+---
 
-The underlying dataset can be either:
-A classic “orders/products/customers” dataset
-Or data reused from my TicketFlow/MiniERP projects later on
+## What the app does
 
-## Quickstart (local)
-Prerequisites:
-Docker and Python 3.10+.
+This project takes structured data and turns it into a usable reporting interface.
 
-1) Start the database
+Depending on the dataset, it can show:
+
+- KPI cards
+- trends over time
+- top lists
+- drilldowns
+- anomaly views
+- detail tables
+- CSV / JSON exports
+
+It also includes a **Smart Upload** flow that can:
+
+- preview uploaded files
+- detect whether they are importable
+- classify partial datasets
+- guide you toward the right import path
+
+---
+
+## Supported import formats
+
+### Order Reporting
+You can import Order Reporting data in these ways:
+
+- **CSV bundle**
+  - `customers.csv`
+  - `categories.csv`
+  - `products.csv`
+  - `orders.csv`
+  - `order_items.csv`
+
+- **Excel workbook**
+  - one sheet per entity:
+    - `customers`
+    - `categories`
+    - `products`
+    - `orders`
+    - `order_items`
+
+- **Smart Upload**
+  - CSV
+  - Excel
+  - ZIP
+  - supported near-match formats may be previewed, staged, or adapted before import
+
+### Flat Metric
+You can import Flat Metric data as:
+
+- a flat CSV
+- an Excel workbook
+- supported wide metric spreadsheets through Smart Upload, when recognized by the adapter flow
+
+---
+
+## Run the app
+
+### Requirements
+
+- **Docker**
+- **Python 3.10+**
+
+---
+
+### Option 1 — easiest local run
+
+```bash
 docker compose up -d
-
-2) Create a virtual environment and install deps
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
+Get-Content .\seed\seed.sql -Raw | docker exec -i reporting_db psql -U postgres -d reporting
+python -m streamlit run app.py
+````
 
-3) Seed the database (example)
-psql postgresql://postgres:postgres@localhost:5434/reporting -f seed/seed.sql
+Open:
 
-4) Run the dashboard
-streamlit run app.py
+```text
+http://localhost:8501
+```
 
-## Configuration
-The app will read a DATABASE_URL.
+---
 
-Example:
-DATABASE_URL=postgresql://postgres:postgres@localhost:5434/reporting
+### Option 2 — full Docker run
 
-You can set it in your shell or use a .env file depending on your setup.
+```bash
+docker compose --profile app up --build
+```
 
-## Repo layout (planned)
-app.py
-requirements.txt
-sql/
-kpis.sql
-reports.sql
-seed/
-seed.sql
-docker-compose.yml
+Open:
 
-## KPIs and reports (planned)
-Examples of queries this project will include:
-Revenue or ticket volume in the last 7/30/90 days
-Top 10 products/customers
-Average order value
-Resolution time distribution (if using ticket data)
-Week-over-week changes and spikes
+```text
+http://localhost:8501
+```
 
-## Roadmap
-- [ ] Finalize dataset and schema
-- [ ] Seed script with realistic sample data
-- [ ] MVP dashboard pages and filters
-- [ ] Add caching for faster queries
-- [ ] Safe parameterized queries
-- [ ] CSV export
-- [ ] “Anomalies” page for unusual spikes/drops (optional)
+---
 
-## License
-MIT
+## How to use it
+
+1. Start the app
+2. Choose a profile:
+
+   * **Order Reporting**
+   * **Flat Metric**
+3. Use one of the import paths:
+
+   * **Demo seed**
+   * **Upload CSV bundle**
+   * **Upload Excel workbook**
+   * **Smart Upload**
+4. If using **Smart Upload**:
+
+   * preview the file
+   * follow the suggested import path
+   * stage partial datasets if needed
+   * import once the dataset is ready
+5. Explore the dashboard using filters, drilldowns, and exports
+
+---
+
+## Notes
+
+* The app ships with demo data for both supported profiles
+* Smart Upload does **not** guarantee that every random file can be imported directly
+* Some files may be:
+
+  * preview-only
+  * partial and stageable
+  * importable via adapter
+  * fully importable
+
+License - MIT
