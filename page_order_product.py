@@ -9,7 +9,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from formatters import add_rank, cents_to_dollars, fmt_number
+from formatters import (
+    add_rank, cents_to_dollars, fmt_number,
+    col_rank, col_money, col_count, col_text, col_date, col_id,
+)
 from queries import (
     get_product_customers,
     get_product_orders,
@@ -151,12 +154,12 @@ def _render_customers(product: str) -> None:
     st.dataframe(
         tbl[["#", "customer", "segment", "city", "revenue", "units_bought"]],
         column_config={
-            "#": st.column_config.NumberColumn("#", width="small"),
-            "customer": st.column_config.TextColumn("Customer"),
-            "segment": st.column_config.TextColumn("Segment"),
-            "city": st.column_config.TextColumn("City"),
-            "revenue": st.column_config.NumberColumn("Revenue", format="$%.2f"),
-            "units_bought": st.column_config.NumberColumn("Units", format="%d"),
+            "#": col_rank(),
+            "customer": col_text("Customer"),
+            "segment": col_text("Segment"),
+            "city": col_text("City"),
+            "revenue": col_money(),
+            "units_bought": col_count("Units"),
         },
         use_container_width=True,
         hide_index=True,
@@ -183,13 +186,13 @@ def _render_detail(product: str) -> None:
         dd[["order_id", "order_date", "status", "customer",
             "quantity", "unit_price", "line_total"]],
         column_config={
-            "order_id": st.column_config.NumberColumn("Order #", format="%d"),
-            "order_date": st.column_config.DateColumn("Date"),
-            "status": st.column_config.TextColumn("Status"),
-            "customer": st.column_config.TextColumn("Customer"),
-            "quantity": st.column_config.NumberColumn("Qty", format="%d"),
-            "unit_price": st.column_config.NumberColumn("Unit Price", format="$%.2f"),
-            "line_total": st.column_config.NumberColumn("Line Total", format="$%.2f"),
+            "order_id": col_id(),
+            "order_date": col_date(),
+            "status": col_text("Status"),
+            "customer": col_text("Customer"),
+            "quantity": col_count("Qty"),
+            "unit_price": col_money("Unit Price"),
+            "line_total": col_money("Line Total"),
         },
         use_container_width=True,
         hide_index=True,

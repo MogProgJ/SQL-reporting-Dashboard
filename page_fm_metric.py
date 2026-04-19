@@ -10,7 +10,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from formatters import add_rank, fmt_number
+from formatters import (
+    add_rank, fmt_number,
+    col_rank, col_text, col_value, col_year, col_score, col_count,
+)
 from flat_metric_queries import (
     get_fm_metric_bottom_entities,
     get_fm_metric_detail,
@@ -144,13 +147,13 @@ def _render_rankings(metric_name: str, year: int | None) -> None:
 
         show_cols = ["#", "entity", "metric_value"]
         col_cfg = {
-            "#": st.column_config.NumberColumn("#", width="small"),
-            "entity": st.column_config.TextColumn("Entity"),
-            "metric_value": st.column_config.NumberColumn(metric_name, format="%.2f"),
+            "#": col_rank(),
+            "entity": col_text("Entity"),
+            "metric_value": col_value(metric_name),
         }
         if "year" in tbl.columns and tbl["year"].notna().any():
             show_cols.append("year")
-            col_cfg["year"] = st.column_config.NumberColumn("Year", format="%d")
+            col_cfg["year"] = col_year()
         st.dataframe(tbl[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
         st.caption(f"One row per entity — {year_label}.")
 
@@ -173,13 +176,13 @@ def _render_rankings(metric_name: str, year: int | None) -> None:
         tbl_b = add_rank(bottom.copy())
         show_cols = ["#", "entity", "metric_value"]
         col_cfg = {
-            "#": st.column_config.NumberColumn("#", width="small"),
-            "entity": st.column_config.TextColumn("Entity"),
-            "metric_value": st.column_config.NumberColumn(metric_name, format="%.2f"),
+            "#": col_rank(),
+            "entity": col_text("Entity"),
+            "metric_value": col_value(metric_name),
         }
         if "year" in tbl_b.columns and tbl_b["year"].notna().any():
             show_cols.append("year")
-            col_cfg["year"] = st.column_config.NumberColumn("Year", format="%d")
+            col_cfg["year"] = col_year()
         st.dataframe(tbl_b[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
         st.caption(f"One row per entity — {year_label}.")
     else:
@@ -212,9 +215,9 @@ def _render_trend(metric_name: str) -> None:
     st.dataframe(
         trend,
         column_config={
-            "year": st.column_config.NumberColumn("Year", format="%d"),
-            "avg_value": st.column_config.NumberColumn(f"Avg {metric_name}", format="%.2f"),
-            "entity_count": st.column_config.NumberColumn("Entities", format="%d"),
+            "year": col_year(),
+            "avg_value": col_value(f"Avg {metric_name}"),
+            "entity_count": col_count("Entities"),
         },
         use_container_width=True,
         hide_index=True,
@@ -241,12 +244,12 @@ def _render_outliers(metric_name: str, year: int | None) -> None:
 
     show_cols = ["entity", "metric_value"]
     col_cfg = {
-        "entity": st.column_config.TextColumn("Entity"),
-        "metric_value": st.column_config.NumberColumn(metric_name, format="%.2f"),
+        "entity": col_text("Entity"),
+        "metric_value": col_value(metric_name),
     }
     if "year" in outliers.columns and outliers["year"].notna().any():
         show_cols.append("year")
-        col_cfg["year"] = st.column_config.NumberColumn("Year", format="%d")
+        col_cfg["year"] = col_year()
 
     st.dataframe(outliers[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
 
@@ -262,16 +265,16 @@ def _render_detail(metric_name: str) -> None:
 
     show_cols = ["entity", "metric_value", "year"]
     col_cfg = {
-        "entity": st.column_config.TextColumn("Entity"),
-        "metric_value": st.column_config.NumberColumn("Value", format="%.2f"),
-        "year": st.column_config.NumberColumn("Year", format="%d"),
+        "entity": col_text("Entity"),
+        "metric_value": col_value(),
+        "year": col_year(),
     }
     if "score" in data.columns and data["score"].notna().any():
         show_cols.append("score")
-        col_cfg["score"] = st.column_config.NumberColumn("Score", format="%.1f")
+        col_cfg["score"] = col_score()
     if "rank" in data.columns and data["rank"].notna().any():
         show_cols.append("rank")
-        col_cfg["rank"] = st.column_config.NumberColumn("Rank", format="%d")
+        col_cfg["rank"] = col_count("Rank")
 
     st.dataframe(data[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True, height=400)
 

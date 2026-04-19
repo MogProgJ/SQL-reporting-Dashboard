@@ -10,7 +10,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from formatters import add_rank, fmt_number
+from formatters import (
+    add_rank, fmt_number,
+    col_rank, col_text, col_value, col_year, col_score, col_count,
+)
 from flat_metric_queries import (
     get_fm_comparison,
     get_fm_detail,
@@ -190,16 +193,16 @@ def _render_rankings(primary_metric: str, filters: dict, snapshot_year: int | No
     tbl = add_rank(ranking.copy())
     show_cols = ["#", "entity", "metric_value"]
     col_config = {
-        "#": st.column_config.NumberColumn("#", width="small"),
-        "entity": st.column_config.TextColumn("Entity"),
-        "metric_value": st.column_config.NumberColumn(primary_metric, format="%.2f"),
+        "#": col_rank(),
+        "entity": col_text("Entity"),
+        "metric_value": col_value(primary_metric),
     }
     if "year" in tbl.columns and tbl["year"].notna().any():
         show_cols.append("year")
-        col_config["year"] = st.column_config.NumberColumn("Year", format="%d")
+        col_config["year"] = col_year()
     if "score" in tbl.columns and tbl["score"].notna().any():
         show_cols.append("score")
-        col_config["score"] = st.column_config.NumberColumn("Score", format="%.1f")
+        col_config["score"] = col_score()
 
     st.dataframe(
         tbl[show_cols],
@@ -265,12 +268,10 @@ def _render_trends(primary_metric: str, filters: dict) -> None:
         st.dataframe(
             comp_tbl[["#", "entity", "metric_value", "year"]],
             column_config={
-                "#": st.column_config.NumberColumn("#", width="small"),
-                "entity": st.column_config.TextColumn("Entity"),
-                "metric_value": st.column_config.NumberColumn(
-                    primary_metric, format="%.2f"
-                ),
-                "year": st.column_config.NumberColumn("Year", format="%d"),
+                "#": col_rank(),
+                "entity": col_text("Entity"),
+                "metric_value": col_value(primary_metric),
+                "year": col_year(),
             },
             use_container_width=True,
             hide_index=True,
@@ -288,21 +289,21 @@ def _render_detail(filters: dict) -> None:
         )
 
         col_config = {
-            "entity": st.column_config.TextColumn("Entity"),
-            "metric_name": st.column_config.TextColumn("Metric"),
-            "metric_value": st.column_config.NumberColumn("Value", format="%.2f"),
+            "entity": col_text("Entity"),
+            "metric_name": col_text("Metric"),
+            "metric_value": col_value(),
         }
         show_cols = ["entity", "metric_name", "metric_value"]
 
         if "year" in detail.columns and detail["year"].notna().any():
             show_cols.append("year")
-            col_config["year"] = st.column_config.NumberColumn("Year", format="%d")
+            col_config["year"] = col_year()
         if "score" in detail.columns and detail["score"].notna().any():
             show_cols.append("score")
-            col_config["score"] = st.column_config.NumberColumn("Score", format="%.1f")
+            col_config["score"] = col_score()
         if "rank" in detail.columns and detail["rank"].notna().any():
             show_cols.append("rank")
-            col_config["rank"] = st.column_config.NumberColumn("Rank", format="%d")
+            col_config["rank"] = col_count("Rank")
 
         st.dataframe(
             detail[show_cols],

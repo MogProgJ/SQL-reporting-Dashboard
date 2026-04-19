@@ -10,7 +10,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from formatters import add_rank, cents_to_dollars, fmt_number
+from formatters import (
+    add_rank, cents_to_dollars, fmt_number,
+    col_rank, col_money, col_count, col_text, col_date, col_id, col_pct,
+)
 from nav_state import OrderPage, set_page
 from queries import (
     find_outlier_days,
@@ -228,14 +231,10 @@ def _render_overview(trend: pd.DataFrame, top_n: int, filters: dict) -> None:
             st.dataframe(
                 tc[["#", "customer", "revenue", "order_count"]],
                 column_config={
-                    "#": st.column_config.NumberColumn("#", width="small"),
-                    "customer": st.column_config.TextColumn("Customer"),
-                    "revenue": st.column_config.NumberColumn(
-                        "Revenue", format="$%.2f"
-                    ),
-                    "order_count": st.column_config.NumberColumn(
-                        "Orders", format="%d"
-                    ),
+                    "#": col_rank(),
+                    "customer": col_text("Customer"),
+                    "revenue": col_money(),
+                    "order_count": col_count("Orders"),
                 },
                 use_container_width=True,
                 hide_index=True,
@@ -259,14 +258,10 @@ def _render_overview(trend: pd.DataFrame, top_n: int, filters: dict) -> None:
             st.dataframe(
                 tp[["#", "product", "revenue", "units_sold"]],
                 column_config={
-                    "#": st.column_config.NumberColumn("#", width="small"),
-                    "product": st.column_config.TextColumn("Product"),
-                    "revenue": st.column_config.NumberColumn(
-                        "Revenue", format="$%.2f"
-                    ),
-                    "units_sold": st.column_config.NumberColumn(
-                        "Units Sold", format="%d"
-                    ),
+                    "#": col_rank(),
+                    "product": col_text("Product"),
+                    "revenue": col_money(),
+                    "units_sold": col_count("Units Sold"),
                 },
                 use_container_width=True,
                 hide_index=True,
@@ -320,16 +315,10 @@ def _render_breakdown(top_n: int, filters: dict) -> None:
             st.dataframe(
                 cat_df[["category", "revenue", "pct", "units_sold"]],
                 column_config={
-                    "category": st.column_config.TextColumn("Category"),
-                    "revenue": st.column_config.NumberColumn(
-                        "Revenue", format="$%.2f"
-                    ),
-                    "pct": st.column_config.NumberColumn(
-                        "% Share", format="%.1f%%"
-                    ),
-                    "units_sold": st.column_config.NumberColumn(
-                        "Units", format="%d"
-                    ),
+                    "category": col_text("Category"),
+                    "revenue": col_money(),
+                    "pct": col_pct(),
+                    "units_sold": col_count("Units"),
                 },
                 use_container_width=True,
                 hide_index=True,
@@ -373,17 +362,11 @@ def _render_breakdown(top_n: int, filters: dict) -> None:
             st.dataframe(
                 ps_tbl[["#", "product", "revenue", "pct_of_total", "units_sold"]],
                 column_config={
-                    "#": st.column_config.NumberColumn("#", width="small"),
-                    "product": st.column_config.TextColumn("Product"),
-                    "revenue": st.column_config.NumberColumn(
-                        "Revenue", format="$%.2f"
-                    ),
-                    "pct_of_total": st.column_config.NumberColumn(
-                        "% Share", format="%.1f%%"
-                    ),
-                    "units_sold": st.column_config.NumberColumn(
-                        "Units", format="%d"
-                    ),
+                    "#": col_rank(),
+                    "product": col_text("Product"),
+                    "revenue": col_money(),
+                    "pct_of_total": col_pct(),
+                    "units_sold": col_count("Units"),
                 },
                 use_container_width=True,
                 hide_index=True,
@@ -416,19 +399,13 @@ def _render_breakdown(top_n: int, filters: dict) -> None:
                 ]
             ],
             column_config={
-                "#": st.column_config.NumberColumn("#", width="small"),
-                "customer": st.column_config.TextColumn("Customer"),
-                "segment": st.column_config.TextColumn("Segment"),
-                "city": st.column_config.TextColumn("City"),
-                "revenue": st.column_config.NumberColumn(
-                    "Revenue", format="$%.2f"
-                ),
-                "order_count": st.column_config.NumberColumn(
-                    "Orders", format="%d"
-                ),
-                "avg_order": st.column_config.NumberColumn(
-                    "Avg Order", format="$%.2f"
-                ),
+                "#": col_rank(),
+                "customer": col_text("Customer"),
+                "segment": col_text("Segment"),
+                "city": col_text("City"),
+                "revenue": col_money(),
+                "order_count": col_count("Orders"),
+                "avg_order": col_money("Avg Order"),
             },
             use_container_width=True,
             hide_index=True,
@@ -457,14 +434,10 @@ def _render_outliers(trend: pd.DataFrame, filters: dict) -> None:
             st.dataframe(
                 oo[["order_id", "order_date", "customer", "order_total"]],
                 column_config={
-                    "order_id": st.column_config.NumberColumn(
-                        "Order #", format="%d"
-                    ),
-                    "order_date": st.column_config.DateColumn("Date"),
-                    "customer": st.column_config.TextColumn("Customer"),
-                    "order_total": st.column_config.NumberColumn(
-                        "Total", format="$%.2f"
-                    ),
+                    "order_id": col_id(),
+                    "order_date": col_date(),
+                    "customer": col_text("Customer"),
+                    "order_total": col_money("Total"),
                 },
                 use_container_width=True,
                 hide_index=True,
@@ -486,13 +459,9 @@ def _render_outliers(trend: pd.DataFrame, filters: dict) -> None:
                 st.dataframe(
                     od[["order_date", "revenue_display", "order_count"]],
                     column_config={
-                        "order_date": st.column_config.DateColumn("Date"),
-                        "revenue_display": st.column_config.NumberColumn(
-                            "Revenue", format="$%.2f"
-                        ),
-                        "order_count": st.column_config.NumberColumn(
-                            "Orders", format="%d"
-                        ),
+                        "order_date": col_date(),
+                        "revenue_display": col_money(),
+                        "order_count": col_count("Orders"),
                     },
                     use_container_width=True,
                     hide_index=True,
@@ -539,24 +508,16 @@ def _render_detail(filters: dict, top_n: int = 10) -> None:
         st.dataframe(
             dd[show_cols],
             column_config={
-                "order_id": st.column_config.NumberColumn(
-                    "Order #", format="%d"
-                ),
-                "order_date": st.column_config.DateColumn("Date"),
-                "status": st.column_config.TextColumn("Status"),
-                "customer": st.column_config.TextColumn("Customer"),
-                "product": st.column_config.TextColumn("Product"),
-                "category": st.column_config.TextColumn("Category"),
-                "quantity": st.column_config.NumberColumn("Qty", format="%d"),
-                "unit_price": st.column_config.NumberColumn(
-                    "Unit Price", format="$%.2f"
-                ),
-                "line_total": st.column_config.NumberColumn(
-                    "Line Total", format="$%.2f"
-                ),
-                "order_total": st.column_config.NumberColumn(
-                    "Order Total", format="$%.2f"
-                ),
+                "order_id": col_id(),
+                "order_date": col_date(),
+                "status": col_text("Status"),
+                "customer": col_text("Customer"),
+                "product": col_text("Product"),
+                "category": col_text("Category"),
+                "quantity": col_count("Qty"),
+                "unit_price": col_money("Unit Price"),
+                "line_total": col_money("Line Total"),
+                "order_total": col_money("Order Total"),
             },
             use_container_width=True,
             hide_index=True,

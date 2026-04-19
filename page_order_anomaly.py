@@ -9,7 +9,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from formatters import add_rank, cents_to_dollars, fmt_number
+from formatters import (
+    add_rank, cents_to_dollars, fmt_number,
+    col_rank, col_money, col_count, col_text, col_date, col_id,
+)
 from queries import (
     find_outlier_days,
     find_outlier_orders,
@@ -95,16 +98,16 @@ def _render_outlier_orders(filters: dict) -> None:
     # Full table
     show_cols = ["#", "order_id", "revenue"]
     col_cfg = {
-        "#": st.column_config.NumberColumn("#", width="small"),
-        "order_id": st.column_config.NumberColumn("Order #", format="%d"),
-        "revenue": st.column_config.NumberColumn("Revenue", format="$%.2f"),
+        "#": col_rank(),
+        "order_id": col_id(),
+        "revenue": col_money(),
     }
     if "customer" in tbl.columns:
         show_cols.insert(2, "customer")
-        col_cfg["customer"] = st.column_config.TextColumn("Customer")
+        col_cfg["customer"] = col_text("Customer")
     if "order_date" in tbl.columns:
         show_cols.insert(2, "order_date")
-        col_cfg["order_date"] = st.column_config.DateColumn("Date")
+        col_cfg["order_date"] = col_date()
 
     st.dataframe(
         tbl[show_cols].head(50),
@@ -158,8 +161,8 @@ def _render_outlier_days(filters: dict) -> None:
     st.dataframe(
         outliers[["order_date", "revenue"]].sort_values("order_date"),
         column_config={
-            "order_date": st.column_config.DateColumn("Date"),
-            "revenue": st.column_config.NumberColumn("Revenue", format="$%.2f"),
+            "order_date": col_date(),
+            "revenue": col_money(),
         },
         use_container_width=True,
         hide_index=True,
@@ -196,6 +199,15 @@ def _render_raw(filters: dict) -> None:
 
     st.dataframe(
         dd[show_cols].head(500),
+        column_config={
+            "order_id": col_id(),
+            "order_date": col_date(),
+            "customer": col_text("Customer"),
+            "product": col_text("Product"),
+            "quantity": col_count("Qty"),
+            "unit_price": col_money("Unit Price"),
+            "line_total": col_money("Line Total"),
+        },
         use_container_width=True,
         hide_index=True,
         height=400,

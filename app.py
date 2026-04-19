@@ -1,4 +1,4 @@
-"""SQL Reporting Dashboard — Phase 3C Closeout: Multi-Profile Hardening."""
+"""SQL Reporting Dashboard — Release Candidate."""
 
 import streamlit as st
 
@@ -26,6 +26,18 @@ _CSS = """<style>
 /* Download button */
 [data-testid="stDownloadButton"] > button {
     border: 1px solid rgba(28, 131, 225, 0.4);
+}
+/* ── Table polish ─────────────────────────────────── */
+/* Header cells — uppercase, tighter, subtle weight */
+[data-testid="stDataFrame"] th {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+}
+/* Body rows — slightly more breathing room */
+[data-testid="stDataFrame"] td {
+    font-size: 0.84rem;
 }
 </style>"""
 
@@ -126,9 +138,11 @@ def _show_import_result(result) -> None:
             "Order Reporting" if result.profile_type.value == "order_reporting"
             else "Flat Metric"
         )
+        source_desc = _source_type_label(result.source_type)
         st.success(
-            f"**\u2705 Dataset now active — {profile_label}**  \n"
-            f"Imported **{total:,} rows** from *{result.source_label}*.  \n"
+            f"**\u2705 {profile_label} dataset is now active**  \n"
+            f"Source: {source_desc} · *{result.source_label}*  \n"
+            f"Loaded **{total:,} rows** into the database.  \n"
             f"{summary_lines}"
         )
         if result.warnings:
@@ -138,8 +152,8 @@ def _show_import_result(result) -> None:
         st.rerun()
     else:
         st.error(
-            f"**Import failed** ({len(result.errors)} error(s)).  \n"
-            "Review the issues below and fix your data."
+            f"**Import failed** — {len(result.errors)} error(s).  \n"
+            "Fix the issues below and try again."
         )
         for iss in result.errors:
             label = iss.entity or "general"
@@ -155,8 +169,21 @@ def _show_import_result(result) -> None:
                     st.caption(f"{w.entity}.{w.column}: {w.message}")
 
 
+def _source_type_label(source_type) -> str:
+    """Human-readable label for a SourceType."""
+    from dataset_profile import SourceType
+    _LABELS = {
+        SourceType.DEMO_SEED: "Demo seed",
+        SourceType.CSV_BUNDLE: "CSV bundle",
+        SourceType.EXCEL_WORKBOOK: "Excel workbook",
+        SourceType.ADAPTED: "Adapted import",
+        SourceType.ASSEMBLED: "Assembled dataset",
+    }
+    return _LABELS.get(source_type, str(source_type))
+
+
 def _render_smart_upload() -> None:
-    """Smart Upload — profile, preview, adapt, or stage uploaded files."""
+    """Smart Upload — guided file inspection, staging, adaptation, and import."""
     from io import BytesIO
 
     from adapters import find_adapter, load_all_adapters
@@ -172,118 +199,124 @@ def _render_smart_upload() -> None:
 
     load_all_adapters()
 
-    # ── Assembly workspace status (always visible if non-empty) ──
+    # ── Assembly workspace (always visible when files are staged) ─
     ws = get_workspace()
     if ws.staged:
         _render_assembly_workspace(ws)
 
     uploaded = st.file_uploader(
-        "Upload a data file to inspect and import",
+        "Upload a data file",
         type=["csv", "xlsx", "xls", "zip"],
         key="smart_upload",
+        help="CSV, Excel, or ZIP. The app inspects the file and guides you.",
     )
     if not uploaded:
-        st.caption(
-            "Drop a CSV, Excel, or ZIP file. The app will detect its "
-            "structure and guide you through the import."
-        )
+        if not ws.staged:
+            st.caption(
+                "Drop a file to get started. The app identifies it and "
+                "shows what you can do with it."
+            )
         return
 
     raw_bytes = uploaded.getvalue()
     buf = BytesIO(raw_bytes)
     profile = profile_file(uploaded.name, buf)
 
-    # Store in session for the preview panel
     st.session_state["_smart_profile"] = profile
 
-    # Status badge
+    # ── Step 1: What is this file? ───────────────────────────
     _BADGE = {
-        Importability.FULL_IMPORT: ("✅", "Fully importable"),
+        Importability.FULL_IMPORT: ("✅", "Ready to import"),
         Importability.ADAPTER_IMPORT: ("🔄", "Importable via adapter"),
         Importability.PREVIEW_ONLY: ("👁️", "Preview only"),
-        Importability.PARTIAL_DATASET: ("⚠️", "Partial dataset"),
+        Importability.PARTIAL_DATASET: ("🧩", "Partial dataset — can be staged"),
         Importability.UNSUPPORTED: ("❌", "Not supported"),
     }
     icon, label = _BADGE.get(profile.importability, ("❓", "Unknown"))
-    st.markdown(f"**{icon} {label}**")
-    st.caption(profile.confidence)
+    st.markdown(f"### {icon} {label}")
 
-    # Encoding/delimiter diagnostics
+    # Encoding/delimiter info
+    diag_parts = []
     if profile.encoding and profile.encoding != "utf-8":
-        st.info(f"📝 Encoding: {profile.encoding}", icon="📝")
+        diag_parts.append(f"encoding: {profile.encoding}")
     if profile.delimiter and profile.delimiter != ",":
         delim_name = {";": "semicolon", "\t": "tab"}.get(profile.delimiter, repr(profile.delimiter))
-        st.info(f"📝 Delimiter: {delim_name}", icon="📝")
+        diag_parts.append(f"delimiter: {delim_name}")
+    if diag_parts:
+        st.caption(f"📝 Detected {', '.join(diag_parts)}")
 
     # File category for preview-only files
     if profile.importability == Importability.PREVIEW_ONLY and profile.file_category:
         cat_labels = {
-            "metadata": "📋 Metadata / reference file",
-            "auxiliary": "📦 Auxiliary business table",
-            "unknown": "❓ Unrecognised format",
+            "metadata": "📋 This is a metadata / reference file — not dashboard data.",
+            "auxiliary": "📦 Auxiliary business table — not used by current profiles.",
+            "unknown": "❓ Unrecognised format — preview available below.",
         }
-        st.caption(cat_labels.get(profile.file_category, profile.file_category))
+        st.info(cat_labels.get(profile.file_category, profile.file_category))
 
-    # Warnings
+    # Confidence note
+    if profile.confidence:
+        st.caption(profile.confidence)
+
+    # Warnings and suggestions
     for w in profile.warnings:
         st.warning(w, icon="⚠️")
-
-    # Suggestions
     for s in profile.suggestions:
         st.info(s, icon="💡")
 
-    # Missing entities (partial dataset)
-    if profile.missing_entities:
-        st.caption(f"Missing entities: {', '.join(profile.missing_entities)}")
-
-    # Asset preview
+    # ── Step 2: Structure preview ────────────────────────────
     if profile.assets:
-        with st.expander(f"📋 Structure ({len(profile.assets)} table(s))"):
+        with st.expander(f"📋 Structure preview ({len(profile.assets)} table(s))", expanded=False):
             for asset in profile.assets:
-                st.markdown(f"**{asset.name}** — {asset.row_count} rows, {len(asset.columns)} columns")
+                st.markdown(f"**{asset.name}** — {asset.row_count:,} rows, {len(asset.columns)} columns")
                 st.caption(", ".join(asset.columns[:15]))
 
-    # Archive contents
     if profile.archive_entries:
         with st.expander(f"📦 Archive contents ({len(profile.archive_entries)} entries)"):
             for entry in profile.archive_entries[:30]:
                 st.text(entry)
 
-    # ── Partial dataset → offer staging ──────────────────────
+    # ── Step 3: What can you do? ─────────────────────────────
+
+    # Partial dataset → stage for assembly
     if (
         profile.importability == Importability.PARTIAL_DATASET
         and profile.profile_family == ProfileFamily.ORDER_REPORTING
         and profile.detected_entity
     ):
         entity = profile.detected_entity
-        st.markdown(f"**Detected as:** `{entity}`")
+        missing = profile.missing_entities
+
+        st.markdown(f"**Detected entity:** `{entity}`")
+        if missing:
+            st.caption(f"Still needed for a full dataset: {', '.join(missing)}")
 
         if entity in ws.staged:
-            st.caption(f"'{entity}' already staged (from {ws.staged[entity].filename}). Staging again will replace it.")
+            st.caption(f"ℹ️ '{entity}' is already staged — staging again replaces it.")
 
         if st.button(
             f"📌 Stage as '{entity}'",
             use_container_width=True,
             key="stage_partial_btn",
+            type="primary",
         ):
-            # Read the full file for staging
             buf.seek(0)
             csv_result = read_csv_robust(buf)
             if csv_result.success and csv_result.df is not None:
                 stage_file(uploaded.name, entity, profile, raw_bytes, csv_result.df)
-                st.success(f"Staged '{uploaded.name}' as **{entity}**.")
+                st.success(f"✅ Staged **{uploaded.name}** as `{entity}`.")
                 st.rerun()
             else:
-                st.error(f"Could not read file for staging: {csv_result.error}")
+                st.error(f"Could not read file: {csv_result.error}")
 
-    # ── Adapter plan + import ────────────────────────────────
+    # Adapter plan + import
     if profile.suggested_adapter:
         adapter = find_adapter(profile)
         if adapter:
             buf.seek(0)
             plan = adapter.plan(profile, buf)
 
-            with st.expander(f"🔧 Adapter: {adapter.description}"):
+            with st.expander(f"🔧 Adapter: {adapter.description}", expanded=False):
                 if plan.field_mappings:
                     st.markdown("**Field mappings:**")
                     for m in plan.field_mappings:
@@ -294,12 +327,17 @@ def _render_smart_upload() -> None:
                     for a in plan.assumptions:
                         st.caption(f"• {a}")
                 if plan.ignored_sheets:
-                    st.caption(f"Ignored: {', '.join(plan.ignored_sheets)}")
+                    st.caption(f"Ignored sheets: {', '.join(plan.ignored_sheets)}")
                 if plan.will_produce:
                     st.caption(f"Will produce: {plan.will_produce}")
 
             if profile.importability in (Importability.FULL_IMPORT, Importability.ADAPTER_IMPORT):
-                if st.button("⬆️ Import via adapter", use_container_width=True, key="smart_import_btn"):
+                if st.button(
+                    "⬆️ Import into database",
+                    use_container_width=True,
+                    key="smart_import_btn",
+                    type="primary",
+                ):
                     buf.seek(0)
                     with st.spinner(f"Transforming via {adapter.name}…"):
                         adapter_result = adapter.transform(buf)
@@ -308,7 +346,7 @@ def _render_smart_upload() -> None:
                     else:
                         for w in adapter_result.warnings:
                             st.caption(f"⚠️ {w}")
-                        with st.spinner("Importing into database…"):
+                        with st.spinner("Loading into database…"):
                             result = import_adapted_frames(
                                 frames=adapter_result.frames,
                                 profile_family=adapter_result.profile_family.value,
@@ -319,46 +357,44 @@ def _render_smart_upload() -> None:
 
 
 def _render_assembly_workspace(ws) -> None:
-    """Render the Order Reporting assembly workspace with guided flow."""
-    from assembly_workspace import clear_workspace, unstage_entity
+    """Render the assembly workspace with entity checklist and guided flow."""
+    from assembly_workspace import clear_workspace, unstage_entity, _ALL_ENTITIES, _REQUIRED_ENTITIES
 
     st.markdown("---")
     st.markdown("### 🗂️ Assembly Workspace")
 
     covered, total = ws.coverage_fraction
     st.progress(covered / total if total else 0)
-    st.caption(ws.readiness_label)
 
-    # Staged files — compact table
-    if ws.staged:
-        for entity, sf in sorted(ws.staged.items()):
-            col1, col2 = st.columns([4, 1])
+    # Entity checklist — every entity shown, staged ones checked
+    for entity in sorted(_ALL_ENTITIES):
+        is_required = entity in _REQUIRED_ENTITIES
+        req_tag = "" if is_required else " *(optional)*"
+        if entity in ws.staged:
+            sf = ws.staged[entity]
+            col1, col2 = st.columns([5, 1])
             with col1:
-                st.markdown(f"✅ **{entity}** ← _{sf.filename}_ ({sf.row_count:,} rows)")
+                st.markdown(f"✅ **{entity}**{req_tag} ← _{sf.filename}_ ({sf.row_count:,} rows)")
             with col2:
                 if st.button("✕", key=f"unstage_{entity}", help=f"Remove {entity}"):
                     unstage_entity(entity)
                     st.rerun()
+        else:
+            marker = "⬜" if is_required else "◻️"
+            st.markdown(f"{marker} **{entity}**{req_tag}")
 
-    # Next-step guidance for missing entities
+    st.caption(ws.readiness_label)
+
+    # Next-step guidance
     if ws.missing_required:
         needed = sorted(ws.missing_required)
-        st.info(
-            f"**Next:** Upload a file for **{needed[0]}** "
-            f"(then {', '.join(needed[1:])})" if len(needed) > 1
-            else f"**Next:** Upload a file for **{needed[0]}**",
-            icon="👉",
-        )
-    elif ws.missing_entities:
-        optional = sorted(ws.missing_entities)
-        st.caption(
-            f"Optional: {', '.join(optional)} "
-            "(these can be synthesised from references)"
-        )
+        next_hint = f"**Next:** upload a file for **{needed[0]}**"
+        if len(needed) > 1:
+            next_hint += f" (then {', '.join(needed[1:])})"
+        st.info(next_hint, icon="👉")
 
     # Import button — prominent when ready
     if ws.is_importable:
-        st.markdown("---")
         if st.button(
             "⬆️ Import assembled dataset",
             use_container_width=True,
@@ -370,7 +406,7 @@ def _render_assembly_workspace(ws) -> None:
             try:
                 with st.spinner("Reading staged files…"):
                     frames = build_assembled_frames()
-                with st.spinner("Importing into database…"):
+                with st.spinner("Loading into database…"):
                     result = import_adapted_frames(
                         frames=frames,
                         profile_family="order_reporting",
@@ -383,7 +419,7 @@ def _render_assembly_workspace(ws) -> None:
             except Exception as exc:
                 st.error(f"Assembly import failed: {exc}")
 
-    # Clear workspace — secondary action
+    # Clear workspace
     if ws.staged:
         if st.button("🗑️ Clear workspace", use_container_width=True, key="clear_ws_btn"):
             clear_workspace()
@@ -432,13 +468,11 @@ with st.sidebar:
     # ── Page navigation ─────────────────────────────────────
     render_nav(is_order)
 
+    # ── 1. Active Dataset ───────────────────────────────────
     st.divider()
+    st.header("📊 Active Dataset")
 
-    # ── Readiness check ─────────────────────────────────────
     readiness = check_order_readiness() if is_order else check_flat_metric_readiness()
-
-    # ── Data Source ──────────────────────────────────────────
-    st.header("Data Source")
 
     if is_order:
         from dataset_profile import ProfileType
@@ -448,79 +482,90 @@ with st.sidebar:
         total_rows = sum(row_counts.values())
 
         if active_ds:
-            st.markdown(f"**Active:** {active_ds.source_badge}")
+            st.markdown(f"**{active_ds.source_badge}**")
             st.caption(
-                f"{active_ds.total_rows:,} rows · imported {active_ds.imported_at[:16]}"
+                f"{active_ds.total_rows:,} rows · "
+                f"imported {active_ds.imported_at[:16]}"
             )
+        elif readiness.is_ready:
+            st.markdown("**🌱 Demo seed**")
+            st.caption(f"{total_rows:,} rows across {len([v for v in row_counts.values() if v]):,} tables")
         else:
-            st.caption(
-                f"**Current dataset:** {total_rows:,} rows across "
-                f"{len([v for v in row_counts.values() if v]):,} tables"
-            )
+            st.caption("No dataset loaded.")
 
+        with st.expander("Table row counts"):
+            for tbl, cnt in row_counts.items():
+                st.text(f"{tbl:15s} {cnt:>6,}")
+    else:
+        from dataset_profile import ProfileType as _PT
+
+        active_fm = get_active_dataset(_PT.FLAT_METRIC)
+        fm_counts = readiness.row_counts if readiness.is_ready else get_flat_metric_row_counts()
+        total_fm = sum(fm_counts.values())
+
+        if active_fm:
+            st.markdown(f"**{active_fm.source_badge}**")
+            st.caption(
+                f"{active_fm.total_rows:,} rows · "
+                f"imported {active_fm.imported_at[:16]}"
+            )
+        elif readiness.is_ready:
+            st.markdown("**🌱 Demo seed**")
+            st.caption(f"{total_fm:,} rows")
+        else:
+            st.caption("No dataset loaded.")
+
+        with st.expander("Table row counts"):
+            for tbl, cnt in fm_counts.items():
+                st.text(f"{tbl:15s} {cnt:>6,}")
+
+    # ── 2. Import Data ──────────────────────────────────────
+    st.divider()
+    st.header("⬆️ Import Data")
+
+    if is_order:
         source_choice = st.radio(
-            "Import data",
-            ["Demo (seed)", "Upload CSV bundle", "Upload Excel workbook", "Smart Upload"],
+            "How to import",
+            ["Smart Upload", "CSV bundle", "Excel workbook"],
             index=0,
             label_visibility="collapsed",
         )
 
         _ENTITY_LIST = ", ".join(f"`{n}`" for n in EXPECTED_NAMES_SORTED)
 
-        if source_choice == "Upload CSV bundle":
-            st.markdown(
-                f"**Required CSV files:** {_ENTITY_LIST}  \n"
-                "One file per entity, column headers in the first row.",
-                help="File names must match the entity names (e.g. customers.csv).",
-            )
+        if source_choice == "CSV bundle":
+            st.caption(f"Required files: {_ENTITY_LIST}")
             csv_files = st.file_uploader(
                 "Upload CSV files",
                 type=["csv"],
                 accept_multiple_files=True,
                 key="csv_upload",
             )
-            if csv_files and st.button("Import CSVs", use_container_width=True):
+            if csv_files and st.button("Import CSVs", use_container_width=True, type="primary"):
                 file_map = {f.name: f for f in csv_files}
                 with st.spinner("Importing CSV bundle\u2026"):
                     result = import_csv_bundle(file_map, label="CSV upload")
                 _show_import_result(result)
 
-        elif source_choice == "Upload Excel workbook":
-            st.markdown(
-                f"**Required sheets:** {_ENTITY_LIST}  \n"
-                "One sheet per entity, column headers in the first row.",
-                help="Sheet names are matched case-insensitively.",
-            )
+        elif source_choice == "Excel workbook":
+            st.caption(f"Required sheets: {_ENTITY_LIST}")
             xls_file = st.file_uploader(
                 "Upload .xlsx workbook",
                 type=["xlsx"],
                 key="xls_upload",
             )
-            if xls_file and st.button("Import Excel", use_container_width=True):
+            if xls_file and st.button("Import Excel", use_container_width=True, type="primary"):
                 with st.spinner("Importing Excel workbook\u2026"):
                     result = import_excel_workbook(xls_file, label=xls_file.name)
                 _show_import_result(result)
 
-        elif source_choice == "Smart Upload":
-            st.caption(
-                "Upload any data file — the app detects its format and "
-                "offers the best import path, including multi-file assembly."
-            )
+        else:  # Smart Upload
+            st.caption("Upload any file — the app identifies it and guides you.")
             _render_smart_upload()
 
-        else:
-            st.info("Using built-in demo dataset (seed.sql).")
-
-        with st.expander("Table row counts"):
-            for tbl, cnt in row_counts.items():
-                st.text(f"{tbl:15s} {cnt:>6,}")
-
-        # Template / example downloads
-        with st.expander("\u2b07 Download example templates"):
-            st.caption(
-                "These contain sample data that the import pipeline accepts. "
-                "Replace the rows with your own data, keeping the structure."
-            )
+        # Template downloads
+        with st.expander("📥 Example templates"):
+            st.caption("Sample data matching the required format.")
             st.download_button(
                 label="CSV bundle (.zip)",
                 data=generate_example_csv_zip(),
@@ -536,30 +581,12 @@ with st.sidebar:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
             except Exception:
-                st.caption(
-                    "Excel template unavailable (openpyxl not installed). "
-                    "Use the CSV template instead."
-                )
+                st.caption("Excel template unavailable (openpyxl not installed).")
 
     else:
-        # Flat Metric data source
-        from dataset_profile import ProfileType as _PT
-
-        active_fm = get_active_dataset(_PT.FLAT_METRIC)
-        fm_counts = readiness.row_counts if readiness.is_ready else get_flat_metric_row_counts()
-        total_fm = sum(fm_counts.values())
-
-        if active_fm:
-            st.markdown(f"**Active:** {active_fm.source_badge}")
-            st.caption(
-                f"{active_fm.total_rows:,} rows · imported {active_fm.imported_at[:16]}"
-            )
-        else:
-            st.caption(f"**Current dataset:** {total_fm:,} rows")
-
         fm_source = st.radio(
-            "Import data",
-            ["Demo (seed)", "Upload CSV", "Upload Excel", "Smart Upload"],
+            "How to import",
+            ["Smart Upload", "CSV", "Excel"],
             index=0,
             label_visibility="collapsed",
             key="fm_source",
@@ -567,57 +594,32 @@ with st.sidebar:
 
         _FM_COLS = "`entity`, `metric_name`, `metric_value` (required); `year`, `score`, `rank` (optional)"
 
-        if fm_source == "Upload CSV":
-            st.markdown(
-                f"**Columns:** {_FM_COLS}",
-                help="One CSV file with flat metric data.",
-            )
-            fm_csv = st.file_uploader(
-                "Upload CSV file",
-                type=["csv"],
-                key="fm_csv_upload",
-            )
-            if fm_csv and st.button("Import CSV", use_container_width=True, key="fm_csv_btn"):
+        if fm_source == "CSV":
+            st.caption(f"Columns: {_FM_COLS}")
+            fm_csv = st.file_uploader("Upload CSV file", type=["csv"], key="fm_csv_upload")
+            if fm_csv and st.button("Import CSV", use_container_width=True, key="fm_csv_btn", type="primary"):
                 with st.spinner("Importing flat metric CSV\u2026"):
                     result = import_flat_metric_csv(fm_csv, label=fm_csv.name)
                 _show_import_result(result)
 
-        elif fm_source == "Upload Excel":
-            st.markdown(
-                f"**Columns:** {_FM_COLS}",
-                help="First sheet of the workbook will be read.",
-            )
-            fm_xls = st.file_uploader(
-                "Upload .xlsx file",
-                type=["xlsx"],
-                key="fm_xls_upload",
-            )
-            if fm_xls and st.button("Import Excel", use_container_width=True, key="fm_xls_btn"):
+        elif fm_source == "Excel":
+            st.caption(f"Columns: {_FM_COLS}")
+            fm_xls = st.file_uploader("Upload .xlsx file", type=["xlsx"], key="fm_xls_upload")
+            if fm_xls and st.button("Import Excel", use_container_width=True, key="fm_xls_btn", type="primary"):
                 with st.spinner("Importing flat metric Excel\u2026"):
                     result = import_flat_metric_excel(fm_xls, label=fm_xls.name)
                 _show_import_result(result)
 
-        elif fm_source == "Smart Upload":
-            st.caption(
-                "Upload any data file — the app detects its format and "
-                "offers the best import path."
-            )
+        else:  # Smart Upload
+            st.caption("Upload any file — the app identifies it and guides you.")
             _render_smart_upload()
 
-        else:
-            st.info("Using built-in demo dataset (seed.sql).")
-
-        with st.expander("Table row counts"):
-            for tbl, cnt in fm_counts.items():
-                st.text(f"{tbl:15s} {cnt:>6,}")
-
+    # ── 3. Filters ──────────────────────────────────────────
     st.divider()
-
-    # ── Filters ─────────────────────────────────────────────
-    st.header("Filters")
+    st.header("🔍 Filters")
 
     if not readiness.is_ready:
-        st.caption("Filters unavailable — profile not ready.")
+        st.caption("Filters unavailable — no data loaded.")
         filters = {}
         top_n = 10
     elif is_order:
@@ -626,10 +628,10 @@ with st.sidebar:
         filters = dashboard_flat_metric.render_filters()
         top_n = 10
 
+    # ── 4. Saved Views & Presets ────────────────────────────
     st.divider()
-
-    # ── Saved Views ─────────────────────────────────────────
-    st.header("Views")
+    st.header("📑 Saved Views")
+    st.caption("Save and restore dashboard states (filters, page, profile).")
 
     # Save current view
     with st.expander("\U0001f4be Save current view"):
@@ -660,7 +662,7 @@ with st.sidebar:
     all_views = list_views()
     user_views = [v for v in all_views if not v.is_preset]
     if user_views:
-        with st.expander(f"\U0001f4c2 Saved views ({len(user_views)})"):
+        with st.expander(f"\U0001f4c2 Your views ({len(user_views)})"):
             view_labels = [f"{v.title} ({v.subtitle})" for v in user_views]
             sel_idx = st.selectbox("Select a view", range(len(view_labels)),
                                    format_func=lambda i: view_labels[i],

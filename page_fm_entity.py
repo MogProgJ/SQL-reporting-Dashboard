@@ -9,7 +9,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from formatters import fmt_number
+from formatters import (
+    fmt_number,
+    col_text, col_value, col_year, col_score, col_count,
+)
 from flat_metric_queries import (
     get_fm_entities,
     get_fm_entity_comparison,
@@ -127,15 +130,15 @@ def _render_trend(entity: str) -> None:
     show = trend.copy()
     show_cols = ["year", "metric_value"]
     col_cfg = {
-        "year": st.column_config.NumberColumn("Year", format="%d"),
-        "metric_value": st.column_config.NumberColumn(metric, format="%.2f"),
+        "year": col_year(),
+        "metric_value": col_value(metric),
     }
     if "score" in show.columns and show["score"].notna().any():
         show_cols.append("score")
-        col_cfg["score"] = st.column_config.NumberColumn("Score", format="%.1f")
+        col_cfg["score"] = col_score()
     if "rank" in show.columns and show["rank"].notna().any():
         show_cols.append("rank")
-        col_cfg["rank"] = st.column_config.NumberColumn("Rank", format="%d")
+        col_cfg["rank"] = col_count("Rank")
 
     st.dataframe(show[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
 
@@ -181,15 +184,15 @@ def _render_comparison(entity: str, summary_row) -> None:
     # Table
     show_cols = ["metric_name", "metric_value"]
     col_cfg = {
-        "metric_name": st.column_config.TextColumn("Metric"),
-        "metric_value": st.column_config.NumberColumn("Value", format="%.2f"),
+        "metric_name": col_text("Metric"),
+        "metric_value": col_value(),
     }
     if "score" in comp.columns and comp["score"].notna().any():
         show_cols.append("score")
-        col_cfg["score"] = st.column_config.NumberColumn("Score", format="%.1f")
+        col_cfg["score"] = col_score()
     if "rank" in comp.columns and comp["rank"].notna().any():
         show_cols.append("rank")
-        col_cfg["rank"] = st.column_config.NumberColumn("Rank", format="%d")
+        col_cfg["rank"] = col_count("Rank")
 
     st.dataframe(comp[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True)
     st.caption(f"Showing one value per metric — {'year ' + str(year) if year else 'latest available year per metric'}.")
@@ -215,16 +218,16 @@ def _render_detail(entity: str) -> None:
 
     show_cols = ["metric_name", "metric_value", "year"]
     col_cfg = {
-        "metric_name": st.column_config.TextColumn("Metric"),
-        "metric_value": st.column_config.NumberColumn("Value", format="%.2f"),
-        "year": st.column_config.NumberColumn("Year", format="%d"),
+        "metric_name": col_text("Metric"),
+        "metric_value": col_value(),
+        "year": col_year(),
     }
     if "score" in data.columns and data["score"].notna().any():
         show_cols.append("score")
-        col_cfg["score"] = st.column_config.NumberColumn("Score", format="%.1f")
+        col_cfg["score"] = col_score()
     if "rank" in data.columns and data["rank"].notna().any():
         show_cols.append("rank")
-        col_cfg["rank"] = st.column_config.NumberColumn("Rank", format="%d")
+        col_cfg["rank"] = col_count("Rank")
 
     st.dataframe(data[show_cols], column_config=col_cfg, use_container_width=True, hide_index=True, height=400)
 
