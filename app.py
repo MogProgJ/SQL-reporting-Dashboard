@@ -47,6 +47,7 @@ from importer import (
     import_flat_metric_csv,
     import_flat_metric_excel,
 )
+from ingestion_state import activate_from_result, get_active_dataset
 from nav_state import (
     FlatMetricPage,
     OrderPage,
@@ -68,10 +69,20 @@ from saved_views import (
     apply_view,
     capture_current_state,
     delete_view,
+    flush_pending_view,
     list_views,
     save_view,
 )
 import demo_presets
+
+# ── Flush any pending saved-view BEFORE widgets are instantiated ─
+flush_pending_view()
+
+# Show view-load warnings if any
+_view_warnings = st.session_state.pop("_view_warnings", None)
+if _view_warnings:
+    for _w in _view_warnings:
+        st.warning(_w)
 
 # ── Header ──────────────────────────────────────────────────────
 
@@ -100,16 +111,25 @@ except Exception as exc:
 # ── Helpers ─────────────────────────────────────────────────────
 
 def _show_import_result(result) -> None:
-    """Display an import result cleanly in the sidebar."""
+    """Display an import result and activate the dataset on success."""
     if result.success:
+        # Activate the dataset in session state
+        active = activate_from_result(result)
+
         total = sum(result.row_counts.values())
         summary_lines = "  \n".join(
             f"  \u2022 {name}: {cnt:,} rows"
             for name, cnt in result.row_counts.items()
             if cnt
         )
+        profile_label = (
+            "Order Reporting" if result.profile_type.value == "order_reporting"
+            else "Flat Metric"
+        )
         st.success(
-            f"**Imported {total:,} rows successfully.**  \n{summary_lines}"
+            f"**\u2705 Dataset now active — {profile_label}**  \n"
+            f"Imported **{total:,} rows** from *{result.source_label}*.  \n"
+            f"{summary_lines}"
         )
         if result.warnings:
             with st.expander(f"\u26a0\ufe0f {len(result.warnings)} warning(s)"):
@@ -158,14 +178,14 @@ def _render_smart_upload() -> None:
         _render_assembly_workspace(ws)
 
     uploaded = st.file_uploader(
-        "Upload any CSV, Excel, or ZIP file",
+        "Upload a data file to inspect and import",
         type=["csv", "xlsx", "xls", "zip"],
         key="smart_upload",
     )
     if not uploaded:
         st.caption(
-            "Drop a file to inspect its structure, preview data, "
-            "and optionally import via an adapter."
+            "Drop a CSV, Excel, or ZIP file. The app will detect its "
+            "structure and guide you through the import."
         )
         return
 
@@ -299,36 +319,52 @@ def _render_smart_upload() -> None:
 
 
 def _render_assembly_workspace(ws) -> None:
-    """Render the Order Reporting assembly workspace summary."""
+    """Render the Order Reporting assembly workspace with guided flow."""
     from assembly_workspace import clear_workspace, unstage_entity
 
     st.markdown("---")
     st.markdown("### 🗂️ Assembly Workspace")
-    st.caption(ws.readiness_label)
 
     covered, total = ws.coverage_fraction
     st.progress(covered / total if total else 0)
+    st.caption(ws.readiness_label)
 
-    # Staged files
-    for entity, sf in sorted(ws.staged.items()):
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            st.markdown(f"**{entity}** ← _{sf.filename}_ ({sf.row_count} rows)")
-        with col2:
-            if st.button("✕", key=f"unstage_{entity}", help=f"Remove {entity}"):
-                unstage_entity(entity)
-                st.rerun()
+    # Staged files — compact table
+    if ws.staged:
+        for entity, sf in sorted(ws.staged.items()):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"✅ **{entity}** ← _{sf.filename}_ ({sf.row_count:,} rows)")
+            with col2:
+                if st.button("✕", key=f"unstage_{entity}", help=f"Remove {entity}"):
+                    unstage_entity(entity)
+                    st.rerun()
 
-    # Missing entities
-    if ws.missing_entities:
-        missing_label = ", ".join(sorted(ws.missing_entities))
-        if ws.missing_required:
-            st.warning(f"Still needed: **{', '.join(sorted(ws.missing_required))}**")
-        st.caption(f"All missing: {missing_label}")
+    # Next-step guidance for missing entities
+    if ws.missing_required:
+        needed = sorted(ws.missing_required)
+        st.info(
+            f"**Next:** Upload a file for **{needed[0]}** "
+            f"(then {', '.join(needed[1:])})" if len(needed) > 1
+            else f"**Next:** Upload a file for **{needed[0]}**",
+            icon="👉",
+        )
+    elif ws.missing_entities:
+        optional = sorted(ws.missing_entities)
+        st.caption(
+            f"Optional: {', '.join(optional)} "
+            "(these can be synthesised from references)"
+        )
 
-    # Import button
+    # Import button — prominent when ready
     if ws.is_importable:
-        if st.button("⬆️ Import assembled dataset", use_container_width=True, key="assembly_import_btn"):
+        st.markdown("---")
+        if st.button(
+            "⬆️ Import assembled dataset",
+            use_container_width=True,
+            key="assembly_import_btn",
+            type="primary",
+        ):
             from assembly_workspace import build_assembled_frames
 
             try:
@@ -347,10 +383,11 @@ def _render_assembly_workspace(ws) -> None:
             except Exception as exc:
                 st.error(f"Assembly import failed: {exc}")
 
-    # Clear workspace
-    if st.button("🗑️ Clear workspace", use_container_width=True, key="clear_ws_btn"):
-        clear_workspace()
-        st.rerun()
+    # Clear workspace — secondary action
+    if ws.staged:
+        if st.button("🗑️ Clear workspace", use_container_width=True, key="clear_ws_btn"):
+            clear_workspace()
+            st.rerun()
 
     st.markdown("---")
 
@@ -404,12 +441,22 @@ with st.sidebar:
     st.header("Data Source")
 
     if is_order:
+        from dataset_profile import ProfileType
+
+        active_ds = get_active_dataset(ProfileType.ORDER_REPORTING)
         row_counts = readiness.row_counts if readiness.is_ready else get_current_row_counts()
         total_rows = sum(row_counts.values())
-        st.caption(
-            f"**Current dataset:** {total_rows:,} rows across "
-            f"{len([v for v in row_counts.values() if v]):,} tables"
-        )
+
+        if active_ds:
+            st.markdown(f"**Active:** {active_ds.source_badge}")
+            st.caption(
+                f"{active_ds.total_rows:,} rows · imported {active_ds.imported_at[:16]}"
+            )
+        else:
+            st.caption(
+                f"**Current dataset:** {total_rows:,} rows across "
+                f"{len([v for v in row_counts.values() if v]):,} tables"
+            )
 
         source_choice = st.radio(
             "Import data",
@@ -456,8 +503,8 @@ with st.sidebar:
 
         elif source_choice == "Smart Upload":
             st.caption(
-                "Upload any CSV, Excel, or ZIP file. The app will detect "
-                "its format and suggest the best import path."
+                "Upload any data file — the app detects its format and "
+                "offers the best import path, including multi-file assembly."
             )
             _render_smart_upload()
 
@@ -496,9 +543,19 @@ with st.sidebar:
 
     else:
         # Flat Metric data source
+        from dataset_profile import ProfileType as _PT
+
+        active_fm = get_active_dataset(_PT.FLAT_METRIC)
         fm_counts = readiness.row_counts if readiness.is_ready else get_flat_metric_row_counts()
         total_fm = sum(fm_counts.values())
-        st.caption(f"**Current dataset:** {total_fm:,} rows")
+
+        if active_fm:
+            st.markdown(f"**Active:** {active_fm.source_badge}")
+            st.caption(
+                f"{active_fm.total_rows:,} rows · imported {active_fm.imported_at[:16]}"
+            )
+        else:
+            st.caption(f"**Current dataset:** {total_fm:,} rows")
 
         fm_source = st.radio(
             "Import data",
@@ -542,8 +599,8 @@ with st.sidebar:
 
         elif fm_source == "Smart Upload":
             st.caption(
-                "Upload any CSV, Excel, or ZIP file. The app will detect "
-                "its format and suggest the best import path."
+                "Upload any data file — the app detects its format and "
+                "offers the best import path."
             )
             _render_smart_upload()
 
@@ -616,10 +673,7 @@ with st.sidebar:
             col_load, col_del = st.columns(2)
             with col_load:
                 if st.button("Load", use_container_width=True, key="_load_view_btn"):
-                    warns = apply_view(sel_view)
-                    if warns:
-                        for w in warns:
-                            st.warning(w)
+                    apply_view(sel_view)
                     st.rerun()
             with col_del:
                 if st.button("Delete", use_container_width=True, key="_del_view_btn"):

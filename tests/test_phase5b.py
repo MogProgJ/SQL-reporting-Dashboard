@@ -179,7 +179,7 @@ class TestCaptureState:
 
 
 class TestApplyView:
-    """apply_view() session-state restoration."""
+    """apply_view() + flush_pending_view() deferred restoration."""
 
     @pytest.fixture()
     def fake_session(self):
@@ -198,6 +198,11 @@ class TestApplyView:
         )
         warns = apply_view(v)
         assert warns == []
+        # apply_view only schedules — keys are set after flush
+        assert "_pending_view" in fake_session
+        from saved_views import flush_pending_view
+        with patch("streamlit.rerun"):
+            flush_pending_view()
         assert fake_session["_profile_radio"].startswith("\U0001f6d2")
         assert fake_session["sel_statuses"] == ["completed"]
         assert fake_session["sel_customers"] == ["Bob"]
@@ -211,12 +216,19 @@ class TestApplyView:
         )
         warns = apply_view(v)
         assert warns == []
+        from saved_views import flush_pending_view
+        with patch("streamlit.rerun"):
+            flush_pending_view()
         assert fake_session["_profile_radio"].startswith("\U0001f4cf")
         assert fake_session["fm_primary_metric"] == "Revenue"
 
     def test_apply_invalid_page_warns(self, fake_session):
         v = SavedView(profile="order_reporting", page="NonexistentPage")
-        warns = apply_view(v)
+        apply_view(v)
+        from saved_views import flush_pending_view
+        with patch("streamlit.rerun"):
+            flush_pending_view()
+        warns = fake_session.get("_view_warnings", [])
         assert len(warns) == 1
         assert "NonexistentPage" in warns[0]
         assert fake_session["nav_page"] == "Summary"
@@ -228,6 +240,9 @@ class TestApplyView:
             target="Alice Corp",
         )
         apply_view(v)
+        from saved_views import flush_pending_view
+        with patch("streamlit.rerun"):
+            flush_pending_view()
         assert fake_session["nav_target"] == "Alice Corp"
 
 

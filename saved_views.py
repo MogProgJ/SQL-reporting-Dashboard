@@ -181,17 +181,43 @@ def capture_current_state(
 
 
 def apply_view(view: SavedView) -> list[str]:
-    """Write a saved view's state into ``st.session_state``.
+    """Schedule a saved view for application on the *next* Streamlit rerun.
 
-    Validates page names and deep-dive targets before restoring.
-    Returns a list of warnings for any state that could not be restored.
+    Instead of writing directly to widget-bound session-state keys (which
+    crashes when the widget has already been instantiated), we stash the
+    view under a private key.  ``flush_pending_view()`` must be called at
+    the **top** of the script — before any widgets — to materialise the
+    state and trigger a rerun.
+
+    Returns a (currently empty) list of warnings for API compatibility.
+    """
+    import streamlit as st
+
+    st.session_state["_pending_view"] = view
+    return []
+
+
+def flush_pending_view() -> list[str]:
+    """Apply a pending saved-view, if any, into ``st.session_state``.
+
+    Call this **once**, at the very top of the Streamlit script, *before*
+    any widget is instantiated.  If a view was scheduled via
+    ``apply_view()`` on the previous run, this function writes all the
+    state keys and triggers ``st.rerun()`` so widgets pick up the new
+    defaults cleanly.
+
+    Returns a list of warnings (e.g. unknown page names).
     """
     import streamlit as st
     from nav_state import FlatMetricPage, OrderPage, _PAGE_KEY, _TARGET_KEY
 
+    view: SavedView | None = st.session_state.pop("_pending_view", None)
+    if view is None:
+        return []
+
     warnings: list[str] = []
 
-    # Profile — set the radio index
+    # Profile — write the radio default before the widget exists
     if view.is_order:
         st.session_state["_profile_radio"] = "\U0001f6d2 Order Reporting"
     else:
@@ -208,11 +234,8 @@ def apply_view(view: SavedView) -> list[str]:
         warnings.append(f"Page '{view.page}' not found — falling back to Summary.")
         st.session_state[_PAGE_KEY] = "Summary"
 
-    # Target — set even if stale (deep-dive pages show their own "not found")
-    if view.target:
-        st.session_state[_TARGET_KEY] = view.target
-    else:
-        st.session_state[_TARGET_KEY] = None
+    # Target
+    st.session_state[_TARGET_KEY] = view.target if view.target else None
 
     # Filters
     if view.is_order:
@@ -220,12 +243,25 @@ def apply_view(view: SavedView) -> list[str]:
         st.session_state["sel_customers"] = view.customers
         st.session_state["sel_categories"] = view.categories
         st.session_state["sel_products"] = view.products
+        # top_n and date range
+        if view.top_n:
+            st.session_state["top_n"] = view.top_n
+        if view.date_from:
+            st.session_state["date_from"] = view.date_from
+        if view.date_to:
+            st.session_state["date_to"] = view.date_to
     else:
         if view.primary_metric:
             st.session_state["fm_primary_metric"] = view.primary_metric
         st.session_state["sel_fm_entities"] = view.entities
         st.session_state["sel_fm_metrics"] = view.metric_names
+        if view.year_from is not None:
+            st.session_state["year_from"] = view.year_from
+        if view.year_to is not None:
+            st.session_state["year_to"] = view.year_to
 
-    return warnings
+    # Store any warnings for display, then rerun so widgets use new defaults
+    if warnings:
+        st.session_state["_view_warnings"] = warnings
 
-    return warnings
+    st.rerun()

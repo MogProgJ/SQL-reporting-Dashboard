@@ -64,7 +64,8 @@ This project is intentionally small, but structured like production code.
 - **validators.py** — Schema checks, null/type/positive-value checks, cross-entity referential integrity.
 - **normalizers.py** — Column name cleanup, Int64/date/text coercion per canonical spec. Pure functions.
 - **loader.py** — Atomic TRUNCATE + reload into the five reporting tables, respecting FK order.
-- **saved_views.py** — SavedView dataclass model with JSON-file persistence. `capture_current_state()` serialises the active session (profile, page, target, filters). `apply_view()` restores state into `st.session_state` with page-name validation and stale-state warnings. Views stored as individual JSON files under `saved_views/`.
+- **saved_views.py** — SavedView dataclass model with JSON-file persistence. `capture_current_state()` serialises the active session (profile, page, target, filters). `apply_view()` schedules a view for restoration via a deferred "pending view" pattern — the view is stashed in `_pending_view` session state, and `flush_pending_view()` applies all state keys *before* any widgets are instantiated on the next rerun, preventing Streamlit's widget-key mutation error. Views stored as individual JSON files under `saved_views/`.
+- **ingestion_state.py** — Session-scoped `ActiveDataset` model tracking import provenance (source type, label, row counts, timestamp). `activate_from_result()` stores an active dataset on successful import. `get_active_dataset()` retrieves it for sidebar display. Keeps "what's loaded" separate from "what's being staged".
 - **report_pack.py** — Profile-aware JSON report-pack builder. `build_order_pack()` bundles KPIs, revenue trend, top-N customers/products, category breakdown, and detail slice. `build_fm_pack()` bundles KPIs, ranking, trend, and detail. Capped at 500 detail rows per pack.
 - **demo_presets.py** — Built-in preset saved views for showcase flows. Reuses the SavedView model with `is_preset=True`. Provides `get_presets(is_order)` for sidebar integration.
 - **dataset_profile.py** — Value types: `ProfileType`, `SourceType`, `ValidationIssue`, `ImportResult`, `DatasetProfile`.
@@ -99,6 +100,7 @@ loader.py           ← Atomic TRUNCATE + reload into Postgres (both profiles)
 file_profiler.py    ← File inspection → FileProfile (type, assets, classification)
 csv_utils.py        ← Encoding-resilient CSV reader (4 encodings × 3 delimiters)
 assembly_workspace.py ← Multi-file staging for Order Reporting assembly
+ingestion_state.py  ← Active dataset tracking + import provenance
 adapters/
   __init__.py       ← Adapter registry (BaseAdapter, register, find, load_all)
   canonical.py      ← Pass-through adapters for canonical formats

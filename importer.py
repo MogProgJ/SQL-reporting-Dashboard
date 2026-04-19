@@ -95,13 +95,20 @@ def import_adapted_frames(
     """Import pre-transformed frames produced by an adapter.
 
     Routes through the same validate → normalize → load pipeline as
-    canonical imports, but uses ``SourceType.ADAPTED`` to track provenance.
+    canonical imports, using ``SourceType.ASSEMBLED`` for multi-file
+    assembly and ``SourceType.ADAPTED`` for adapter imports.
     """
     from file_profiler import ProfileFamily
 
+    source_type = (
+        SourceType.ASSEMBLED if adapter_name == "multi_file_assembly"
+        else SourceType.ADAPTED
+    )
+    display_label = f"{label} ({adapter_name})"
+
     if profile_family == ProfileFamily.FLAT_METRIC:
-        return _import_flat_metric_frames(frames, SourceType.ADAPTED, f"{label} ({adapter_name})")
-    return _import_frames(frames, SourceType.ADAPTED, f"{label} ({adapter_name})")
+        return _import_flat_metric_frames(frames, source_type, display_label)
+    return _import_frames(frames, source_type, display_label)
 
 
 def get_demo_profile() -> DatasetProfile:

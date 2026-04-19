@@ -413,3 +413,45 @@ shippers, suppliers, regions, territories, demographics). Sets
 - Auxiliary Northwind tables (employees, shippers) are recognized as
   intentionally excluded from the reporting model.
 - Unknown files still get "preview only" with honest messaging.
+
+## ADR 020: Deferred saved-view application (Phase 6B)
+
+**Context:** `apply_view()` wrote directly to widget-bound session-state
+keys (`_profile_radio`, `sel_statuses`, etc.) after those widgets had
+already been instantiated in the same Streamlit script run. Streamlit
+prohibits modifying widget-bound keys after widget instantiation, causing
+a crash when loading a preset that switches profiles.
+
+**Decision:** Switch to a "pending view" pattern. `apply_view()` stashes the
+view under `_pending_view` in session state and returns immediately. The
+caller triggers `st.rerun()`. At the top of app.py, `flush_pending_view()`
+runs before any widgets — it reads the pending view, writes all state keys
+(profile, page, target, filters, top_n, date range, year range), and reruns
+so widgets pick up the new defaults cleanly.
+
+**Consequences:**
+- Presets and saved views can safely switch profiles without crashing.
+- `top_n`, `date_from`/`date_to`, and `year_from`/`year_to` are now
+  restored (previously missing from apply_view).
+- Page name validation and warnings are preserved via `_view_warnings`.
+- The dead duplicate `return warnings` in the old code is eliminated.
+
+## ADR 021: Active dataset provenance tracking (Phase 6B)
+
+**Context:** The app had no persistent concept of "what data is loaded" —
+it checked row counts via live DB queries on every rerun. There was no way
+for the sidebar to show how the current data arrived (CSV upload, Excel
+workbook, adapter import, assembly, or demo seed).
+
+**Decision:** Introduce `ingestion_state.py` with an `ActiveDataset`
+dataclass (profile_type, source_type, source_label, row_counts, imported_at)
+stored in session state keyed by profile type. `activate_from_result()`
+creates and stores an `ActiveDataset` on successful import. The sidebar
+displays a source badge with icon and label when an active dataset exists.
+
+**Consequences:**
+- Users see clear provenance: "🔄 northwind.xlsx" or "🗂️ Assembled dataset".
+- Active dataset state is separate from assembly workspace state — no confusion.
+- The `SourceType.ASSEMBLED` enum value (previously unused) is now properly
+  used for multi-file assembly imports.
+- Import success messaging now includes profile name and source label.
