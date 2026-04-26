@@ -1,2 +1,2 @@
 # Development / test dependencies (install on top of requirements.txt)
-pytest>=8,<10
+pytest>=9.0.3,<10
